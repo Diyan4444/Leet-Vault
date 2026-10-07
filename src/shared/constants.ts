@@ -1,7 +1,7 @@
 import { ExtensionSettings } from './types';
 
 export const DEFAULT_SETTINGS: ExtensionSettings = {
-  authMethod: 'pat',
+  authMethod: 'oauth',
   repoConfig: {
     owner: '',
     repo: '',
@@ -16,6 +16,7 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
   includeRuntimeInReadme: true,
   includeMemoryInReadme: true,
   theme: 'system',
+  ownerOnlyMode: false,
 };
 
 export const STORAGE_KEYS = {
@@ -39,9 +40,13 @@ export const MESSAGES = {
   GET_STATUS: 'LC_GET_STATUS',
   GET_SETTINGS: 'LC_GET_SETTINGS',
   SAVE_SETTINGS: 'LC_SAVE_SETTINGS',
+  START_OAUTH_FLOW: 'LC_START_OAUTH_FLOW',
   VALIDATE_GITHUB_TOKEN: 'LC_VALIDATE_GITHUB_TOKEN',
   FETCH_REPOSITORIES: 'LC_FETCH_REPOSITORIES',
   FETCH_BRANCHES: 'LC_FETCH_BRANCHES',
+  VERIFY_AND_LINK_REPOSITORY: 'LC_VERIFY_AND_LINK_REPOSITORY',
+  DISCONNECT_GITHUB: 'LC_DISCONNECT_GITHUB',
+  GET_PENDING_QUEUE: 'LC_GET_PENDING_QUEUE',
   RETRY_QUEUE_ITEM: 'LC_RETRY_QUEUE_ITEM',
   CLEAR_QUEUE_ITEM: 'LC_CLEAR_QUEUE_ITEM',
 } as const;

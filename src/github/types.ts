@@ -40,6 +40,13 @@ export interface GitHubRepoItem {
   default_branch: string;
   description: string | null;
   html_url: string;
+  permissions?: {
+    admin?: boolean;
+    maintain?: boolean;
+    push?: boolean;
+    triage?: boolean;
+    pull?: boolean;
+  };
 }
 
 export interface GitHubBranchItem {

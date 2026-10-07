@@ -17,6 +17,7 @@
       </div>
       <nav class="nav-links">
         <a href="#github-section" class="nav-link active">GitHub Connection</a>
+        <a href="#queue-section" class="nav-link">Pending Queue</a>
         <a href="#sync-section" class="nav-link">Sync Preferences</a>
         <a href="#readme-section" class="nav-link">README Settings</a>
         <a href="#appearance-section" class="nav-link">Appearance</a>
@@ -32,44 +33,82 @@
       <!-- Status banner -->
       <div id="status-banner" class="banner" style="display: none;"></div>
 
-      <!-- GitHub Section -->
+      <!-- GitHub Connection Section -->
       <section id="github-section" class="card">
-        <h2>GitHub Repository Connection</h2>
-        <p class="card-desc">Enter your target GitHub repository URL to link with the extension.</p>
+        <h2>1. GitHub Account Authorization</h2>
+        <p class="card-desc">Authorize the extension with your GitHub account via secure OAuth.</p>
+
+        <!-- Unauthenticated state -->
+        <div id="oauth-unconnected-box" style="margin-bottom: 20px;">
+          <button id="connect-oauth-btn" class="btn btn-primary" style="font-size: 14px; padding: 10px 20px;">
+            Connect GitHub Account
+          </button>
+          <span class="field-hint" style="display: block; margin-top: 8px;">
+            Secure token exchange handled via serverless OAuth broker. No client secrets are stored in the extension.
+          </span>
+        </div>
+
+        <!-- Authenticated account box -->
+        <div id="oauth-connected-box" class="user-info" style="display: none; margin-bottom: 24px;">
+          <div class="status-indicator-icon" style="width: 36px; height: 36px; border-radius: 50%; background: #dcfce7; color: #15803d; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 18px;">
+            ✓
+          </div>
+          <div>
+            <div style="font-weight: 600; font-size: 14px; color: #15803d;">Authenticated Identity Verified</div>
+            <div id="user-identity-display" style="font-size: 13px; color: #334155;">Connected as @username</div>
+          </div>
+          <button id="disconnect-btn" class="btn btn-secondary" style="margin-left: auto; font-size: 12px; padding: 6px 12px; color: #dc2626; border-color: #fca5a5;">
+            Disconnect GitHub
+          </button>
+        </div>
+
+        <h2 style="margin-top: 24px;">2. Repository Verification & Branch</h2>
+        <p class="card-desc">Specify your target GitHub repository and branch.</p>
 
         <div class="form-group">
-          <label for="repo-url-input">GitHub Repository</label>
+          <label for="repo-url-input">Target Repository URL</label>
           <div class="input-with-button">
             <input type="text" id="repo-url-input" placeholder="https://github.com/USERNAME/REPOSITORY" autocomplete="off" />
-            <button id="connect-github-btn" class="btn btn-primary">Connect GitHub</button>
+            <button id="verify-repo-btn" class="btn btn-primary">Verify Repository</button>
           </div>
           <span class="field-hint">e.g. <code>https://github.com/Diyan4444/LeetCode</code> or <code>username/repository</code></span>
         </div>
 
-        <div id="connection-status-box" class="user-info" style="display: none;">
+        <div id="repo-status-box" class="user-info" style="display: none; margin-bottom: 16px;">
           <div class="status-indicator-icon" style="width: 32px; height: 32px; border-radius: 50%; background: #dcfce7; color: #15803d; display: flex; align-items: center; justify-content: center; font-weight: bold;">
             ✓
           </div>
           <div>
-            <div style="font-weight: 600; font-size: 14px; color: #15803d;">Status</div>
-            <div id="status-line-1" style="font-size: 13px; color: #334155;">✓ GitHub account connected</div>
-            <div id="status-line-2" style="font-size: 13px; color: #334155;">✓ Repository linked: <strong id="linked-repo-name"></strong></div>
+            <div style="font-weight: 600; font-size: 13px; color: #15803d;">Repository Verified</div>
+            <div id="repo-status-line" style="font-size: 13px; color: #334155;">Push Access: Yes</div>
           </div>
-          <button id="disconnect-btn" class="btn btn-secondary" style="margin-left: auto; font-size: 12px; padding: 6px 10px;">Disconnect</button>
         </div>
 
         <div class="form-row">
           <div class="form-group flex-1">
-            <label for="branch-select">Branch</label>
+            <label for="branch-select">Target Branch</label>
             <select id="branch-select">
               <option value="main">main</option>
             </select>
+            <span class="field-hint">Branches loaded dynamically from GitHub</span>
           </div>
 
           <div class="form-group flex-1">
             <label for="root-folder-input">Root Folder (Optional)</label>
             <input type="text" id="root-folder-input" placeholder="Leave empty for root (/), or e.g. solutions" />
           </div>
+        </div>
+      </section>
+
+      <!-- Pending Queue Section -->
+      <section id="queue-section" class="card">
+        <h2>Pending Sync Queue</h2>
+        <p class="card-desc">Accepted solutions safely stored offline or during temporary network/GitHub rate limits.</p>
+        <div id="options-queue-container">
+          <div id="queue-empty-state" class="empty-state" style="padding: 16px; color: #64748b; font-size: 13px;">
+            No items pending sync.
+          </div>
+          <div id="options-queue-list" style="display: none; display: flex; flex-direction: column; gap: 8px;"></div>
         </div>
       </section>
 
@@ -96,15 +135,23 @@
         <div class="toggle-group">
           <div class="toggle-info">
             <label class="toggle-label" for="auto-sync-toggle">Auto-save with default name</label>
-            <span class="field-hint">Bypass popup and automatically commit as Solution N on accepted submission (Manual popup recommended).</span>
+            <span class="field-hint">Bypass popup and automatically commit as Solution N on accepted submission when no collisions exist.</span>
           </div>
           <input type="checkbox" id="auto-sync-toggle" />
+        </div>
+
+        <div class="toggle-group">
+          <div class="toggle-info">
+            <label class="toggle-label" for="owner-only-toggle">Enforce owner-only mode</label>
+            <span class="field-hint">Disallow collaborator repositories; require you to be the primary owner of the target repository.</span>
+          </div>
+          <input type="checkbox" id="owner-only-toggle" />
         </div>
       </section>
 
       <!-- README Settings Section -->
       <section id="readme-section" class="card">
-        <h2>README Generation</h2>
+        <h2>README Settings</h2>
 
         <div class="toggle-group">
           <div class="toggle-info">

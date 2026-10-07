@@ -3,14 +3,18 @@ import {
   SyncResult,
   ProblemDirectoryState,
   ExistingSolutionFile,
+  LeetCodeProblem,
 } from '../shared/types';
 import { StorageService } from '../shared/storage';
 import { GitHubContentsService } from '../github/contents';
+import { GitHubRepositoriesService } from '../github/repositories';
+import { GitHubContentItem } from '../github/types';
+import { resolveLanguage } from '../leetcode/language-map';
 import { FilenameManager } from './filename-manager';
 import { DuplicateDetector } from './duplicate-detector';
 import { ReadmeGenerator, SolutionRowData } from './readme-generator';
 import { formatProblemFolderName } from '../utils/sanitize';
-import { resolveLanguage } from '../leetcode/language-map';
+import { STORAGE_KEYS } from '../shared/constants';
 
 export class SyncManager {
   /**
@@ -47,37 +51,26 @@ export class SyncManager {
         branch
       );
 
-      if (!contents) {
-        return {
-          folderName,
-          folderPath,
-          files: [],
-          readmeExists: false,
-        };
-      }
+      const items: GitHubContentItem[] = Array.isArray(contents) ? contents : [];
+      const files: ExistingSolutionFile[] = items.map((item: GitHubContentItem) => ({
+        name: item.name,
+        path: item.path,
+        sha: item.sha,
+        size: item.size,
+        downloadUrl: item.download_url || undefined,
+      }));
 
-      const items = Array.isArray(contents) ? contents : [contents];
-      const files: ExistingSolutionFile[] = items
-        .filter((item) => item.type === 'file')
-        .map((item) => ({
-          name: item.name,
-          path: item.path,
-          sha: item.sha,
-          size: item.size,
-          downloadUrl: item.download_url || undefined,
-        }));
-
-      const readmeFile = files.find((f) => f.name.toLowerCase() === 'readme.md');
+      const readme = files.find((f) => f.name.toLowerCase() === 'readme.md');
 
       return {
         folderName,
         folderPath,
         files,
-        readmeExists: !!readmeFile,
-        readmeSha: readmeFile?.sha,
+        readmeExists: !!readme,
+        readmeSha: readme ? readme.sha : undefined,
       };
-    } catch (err) {
-      console.warn('Failed to get problem directory state from GitHub:', err);
+    } catch (err: unknown) {
+      // 404 means the folder does not exist yet (clean new problem)
       return {
         folderName,
         folderPath,
@@ -95,10 +88,12 @@ export class SyncManager {
    * 4. Check filename collisions
    * 5. Upload/commit solution file to GitHub
    * 6. Generate/update problem README.md
-   * 7. Save to sync history
+   * 7. Maintain repository root README.md
+   * 8. Save to sync history
    */
   static async syncSolution(request: SyncRequest): Promise<SyncResult> {
     const settings = await StorageService.getSettings();
+    const user = await StorageService.getGitHubUser();
     const token = settings.githubToken;
     const { owner, repo, branch, rootFolder } = settings.repoConfig;
 
@@ -108,6 +103,45 @@ export class SyncManager {
         fileName: '',
         filePath: '',
         error: 'GitHub repository or authentication is not configured in Settings.',
+      };
+    }
+
+    // Security check 1: Verify authenticated push access immediately before every write
+    const writeCheck = await GitHubRepositoriesService.verifyRepoWriteAccess(
+      token,
+      owner,
+      repo,
+      {
+        ownerOnly: settings.ownerOnlyMode,
+        currentUsername: user?.login,
+      }
+    );
+
+    if (!writeCheck.hasWriteAccess) {
+      // Invalidate stored verification
+      await StorageService.saveSettings({
+        repoConfig: {
+          ...settings.repoConfig,
+          verified: false,
+        },
+      });
+      return {
+        success: false,
+        fileName: '',
+        filePath: '',
+        error: writeCheck.error || 'Repository access denied. Write permission required.',
+      };
+    }
+
+    // Security check 2: Verify target branch still exists before committing
+    const targetBranch = branch || 'main';
+    const branchCheck = await GitHubRepositoriesService.getBranch(token, owner, repo, targetBranch);
+    if (!branchCheck) {
+      return {
+        success: false,
+        fileName: '',
+        filePath: '',
+        error: `Selected branch "${targetBranch}" does not exist in repository ${owner}/${repo}. Please select an existing branch.`,
       };
     }
 
@@ -125,7 +159,7 @@ export class SyncManager {
         token,
         owner,
         repo,
-        branch
+        targetBranch
       );
 
       if (dupCheck.isDuplicate && dupCheck.matchingFileName) {
@@ -176,19 +210,25 @@ export class SyncManager {
         fullFilePath,
         code,
         commitMessage,
-        branch,
+        targetBranch,
         targetSha
       );
 
-      const githubFileUrl = `https://github.com/${owner}/${repo}/blob/${branch}/${fullFilePath}`;
+      const githubFileUrl = `https://github.com/${owner}/${repo}/blob/${targetBranch}/${fullFilePath}`;
 
       // 6. Update Problem README if setting is enabled
+      let solutionCount = dirState.files.filter((f) => f.name.toLowerCase() !== 'readme.md').length;
+      if (!existingFile && !overwriteSha) {
+        solutionCount += 1;
+      }
+      if (solutionCount < 1) solutionCount = 1;
+
       if (settings.generateProblemReadme) {
         await this.syncProblemReadme(
           token,
           owner,
           repo,
-          branch,
+          targetBranch,
           dirState,
           request,
           fileName,
@@ -196,7 +236,20 @@ export class SyncManager {
         );
       }
 
-      // 7. Record to Sync History
+      // 7. Maintain repository root README if enabled
+      if (settings.updateRootReadme) {
+        await this.syncRootReadme(
+          token,
+          owner,
+          repo,
+          targetBranch,
+          problem,
+          dirState.folderName,
+          solutionCount
+        );
+      }
+
+      // 8. Record to Sync History
       await StorageService.addSyncHistory({
         id: `${Date.now()}-${problem.id}`,
         problemId: problem.id,
@@ -220,6 +273,43 @@ export class SyncManager {
     } catch (err: unknown) {
       console.error('GitHub file upload error:', err);
       const errMsg = (err as Error).message || 'Failed to push solution to GitHub';
+
+      // Check if error is a temporary network or GitHub server/rate-limit error
+      const isTemporary =
+        errMsg.includes('Failed to fetch') ||
+        errMsg.includes('NetworkError') ||
+        errMsg.includes('network') ||
+        errMsg.includes('500') ||
+        errMsg.includes('502') ||
+        errMsg.includes('503') ||
+        errMsg.includes('504') ||
+        errMsg.includes('429') ||
+        errMsg.includes('rate limit');
+
+      if (isTemporary) {
+        // Enqueue into pending queue for retry
+        await StorageService.enqueuePendingItem({
+          id: `queue_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          createdAt: Date.now(),
+          request,
+          error: errMsg,
+          retryCount: 0,
+          repositoryOwner: owner,
+          repositoryName: repo,
+          branch: targetBranch,
+          lastAttemptAt: Date.now(),
+        });
+
+        return {
+          success: false,
+          fileName,
+          filePath: fullFilePath,
+          conflictType: 'GITHUB_ERROR',
+          queuedForRetry: true,
+          error: `Temporary GitHub error: ${errMsg}. Solution has been safely saved to Pending Queue.`,
+        };
+      }
+
       return {
         success: false,
         fileName,
@@ -244,7 +334,6 @@ export class SyncManager {
     currentSolutionName: string
   ): Promise<void> {
     try {
-      // Re-fetch directory state or synthesize solutions table
       const readmePath = `${dirState.folderPath}/README.md`;
       const existingSolutions: SolutionRowData[] = [];
 
@@ -305,5 +394,108 @@ export class SyncManager {
     } catch (readmeErr) {
       console.warn('Failed to update problem README (non-fatal):', readmeErr);
     }
+  }
+
+  /**
+   * Helper to maintain repository root README.md
+   */
+  private static async syncRootReadme(
+    token: string,
+    owner: string,
+    repo: string,
+    branch: string,
+    problem: LeetCodeProblem,
+    problemFolder: string,
+    solutionCount: number
+  ): Promise<void> {
+    try {
+      const rootReadmeFile = await GitHubContentsService.getFileContent(
+        token,
+        owner,
+        repo,
+        'README.md',
+        branch
+      );
+
+      const existingContent = rootReadmeFile?.content || '';
+      const rootSha = rootReadmeFile?.sha;
+
+      // Parse existing problem entries from table to prevent duplicates
+      const problemMap = new Map<string, { id: string; title: string; folder: string; difficulty?: string; count: number }>();
+
+      const rowRegex = /\|\s*(\d+)\s*\|\s*\[([^\]]+)\]\(\.\/([^)]+)\)\s*\|\s*([^|]*)\s*\|\s*(\d+)\s*\|/g;
+      let match: RegExpExecArray | null;
+      while ((match = rowRegex.exec(existingContent)) !== null) {
+        problemMap.set(match[1], {
+          id: match[1],
+          title: match[2].trim(),
+          folder: match[3].trim(),
+          difficulty: match[4].trim(),
+          count: parseInt(match[5], 10) || 1,
+        });
+      }
+
+      // Add or update current problem in map
+      problemMap.set(problem.id, {
+        id: problem.id,
+        title: problem.title,
+        folder: problemFolder,
+        difficulty: problem.difficulty || 'Medium',
+        count: solutionCount,
+      });
+
+      const updatedList = Array.from(problemMap.values());
+      const newRootContent = ReadmeGenerator.updateRootReadmeContent(existingContent, updatedList);
+
+      await GitHubContentsService.putFile(
+        token,
+        owner,
+        repo,
+        'README.md',
+        newRootContent,
+        `Update root README for ${problem.title}`,
+        branch,
+        rootSha
+      );
+    } catch (rootErr) {
+      console.warn('Failed to update root README (non-fatal):', rootErr);
+    }
+  }
+
+  /**
+   * Retries syncing a specific queued pending item
+   */
+  static async retryPendingItem(id: string): Promise<SyncResult> {
+    const queue = await StorageService.getPendingQueue();
+    const item = queue.find((q) => q.id === id);
+    if (!item) {
+      return {
+        success: false,
+        fileName: '',
+        filePath: '',
+        error: 'Queued item not found.',
+      };
+    }
+
+    const result = await this.syncSolution(item.request);
+    if (result.success) {
+      await StorageService.removePendingItem(id);
+    } else {
+      const updatedQueue = queue.map((q) => {
+        if (q.id === id) {
+          return {
+            ...q,
+            retryCount: q.retryCount + 1,
+            error: result.error || 'Retry attempt failed',
+            lastAttemptAt: Date.now(),
+          };
+        }
+        return q;
+      });
+      if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+        await chrome.storage.local.set({ [STORAGE_KEYS.PENDING_QUEUE]: updatedQueue });
+      }
+    }
+    return result;
   }
 }

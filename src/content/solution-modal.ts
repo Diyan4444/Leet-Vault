@@ -5,6 +5,7 @@ import {
 } from '../shared/types';
 import { resolveLanguage } from '../leetcode/language-map';
 import { FilenameManager } from '../sync/filename-manager';
+import { escapeHtml } from '../utils/sanitize';
 
 export interface ModalCallbacks {
   onSave: (customName: string, overwriteSha?: string, forceAnyway?: boolean) => Promise<SyncResult>;
@@ -80,7 +81,6 @@ export class SolutionModal {
     `
     );
 
-    // Inject CSS Animation and Dark Mode support
     const styleEl = document.createElement('style');
     styleEl.textContent = `
       @keyframes lcModalFadeIn {
@@ -124,13 +124,20 @@ export class SolutionModal {
     `;
     overlay.appendChild(styleEl);
 
-    // Build Content Structure
     const diffBadgeColor =
       this.submission.problem.difficulty === 'Easy'
         ? '#10b981'
         : this.submission.problem.difficulty === 'Hard'
         ? '#ef4444'
         : '#f59e0b';
+
+    const safeTitle = escapeHtml(this.submission.problem.title);
+    const safeProblemId = escapeHtml(this.submission.problem.id);
+    const safeDiff = escapeHtml(this.submission.problem.difficulty || 'LeetCode');
+    const safeLangName = escapeHtml(langConfig.name);
+    const safeLangExt = escapeHtml(langConfig.extension);
+    const safeRuntime = escapeHtml(this.submission.runtime || 'N/A');
+    const safeMemory = escapeHtml(this.submission.memory || 'N/A');
 
     card.innerHTML = `
       <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px;">
@@ -139,12 +146,12 @@ export class SolutionModal {
             LeetCode → GitHub Sync
           </div>
           <h2 style="margin: 4px 0 2px 0; font-size: 18px; font-weight: 700; color: #0f172a;">
-            ${this.submission.problem.title}
+            ${safeTitle}
           </h2>
           <div style="display: flex; gap: 8px; align-items: center; font-size: 13px; color: #64748b;">
-            <span>#${this.submission.problem.id}</span>
+            <span>#${safeProblemId}</span>
             <span>•</span>
-            <span style="color: ${diffBadgeColor}; font-weight: 600;">${this.submission.problem.difficulty || 'LeetCode'}</span>
+            <span style="color: ${diffBadgeColor}; font-weight: 600;">${safeDiff}</span>
           </div>
         </div>
         <button id="lc-close-btn" style="background: none; border: none; font-size: 20px; color: #94a3b8; cursor: pointer; padding: 4px; line-height: 1;">&times;</button>
@@ -154,13 +161,13 @@ export class SolutionModal {
         <div>
           <span style="font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: 600;">Language</span>
           <div style="font-size: 13px; font-weight: 600; color: #1e293b; margin-top: 2px;">
-            ${langConfig.name} (${langConfig.extension})
+            ${safeLangName} (${safeLangExt})
           </div>
         </div>
         <div>
           <span style="font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: 600;">Performance</span>
           <div style="font-size: 13px; font-weight: 600; color: #1e293b; margin-top: 2px;">
-            ${this.submission.runtime || 'N/A'} · ${this.submission.memory || 'N/A'}
+            ${safeRuntime} · ${safeMemory}
           </div>
         </div>
       </div>
@@ -187,7 +194,7 @@ export class SolutionModal {
         />
         <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px;">
           <span id="lc-filename-preview" style="font-size: 12px; color: #64748b; font-family: monospace;">
-            Preview: solution-${defaultNumber}${langConfig.extension}
+            Preview: solution-${defaultNumber}${safeLangExt}
           </span>
           <span style="font-size: 11px; color: #94a3b8;">Enter to save</span>
         </div>
@@ -213,6 +220,82 @@ export class SolutionModal {
     this.attachEventListeners(defaultNumber, langConfig.extension);
   }
 
+  /**
+   * Renders direct success UI for automated background syncs
+   */
+  renderDirectSuccess(result: SyncResult): void {
+    this.render();
+    this.showSuccess(result);
+  }
+
+  /**
+   * Renders prompt when GitHub account or repo is not yet configured
+   */
+  renderConnectPrompt(onOpenOptions: () => void): void {
+    this.destroy();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'lc-gh-modal-overlay';
+    overlay.setAttribute(
+      'style',
+      `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(15, 23, 42, 0.7);
+      backdrop-filter: blur(4px);
+      z-index: 9999999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: #0f172a;
+      box-sizing: border-box;
+    `
+    );
+
+    const card = document.createElement('div');
+    card.id = 'lc-gh-modal-card';
+    card.setAttribute(
+      'style',
+      `
+      background: #ffffff;
+      width: 100%;
+      max-width: 440px;
+      border-radius: 12px;
+      padding: 24px;
+      text-align: center;
+      box-sizing: border-box;
+    `
+    );
+
+    card.innerHTML = `
+      <div style="width: 44px; height: 44px; background: #eff6ff; color: #2563eb; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 20px; font-weight: bold; margin-bottom: 12px;">
+        !
+      </div>
+      <h3 style="margin: 0 0 8px 0; font-size: 17px; font-weight: 700; color: #0f172a;">Connect GitHub</h3>
+      <p style="font-size: 13px; color: #64748b; margin: 0 0 20px 0; line-height: 1.5;">
+        Connect your GitHub account and repository in settings to automatically sync your accepted LeetCode solutions.
+      </p>
+      <div style="display: flex; justify-content: center; gap: 10px;">
+        <button id="lc-dismiss-btn" style="padding: 8px 16px; border: 1px solid #cbd5e1; background: #f8fafc; color: #475569; border-radius: 6px; cursor: pointer;">Dismiss</button>
+        <button id="lc-open-settings-btn" style="padding: 8px 16px; border: 1px solid #1d4ed8; background: #2563eb; color: #ffffff; border-radius: 6px; cursor: pointer; font-weight: 600;">Connect GitHub</button>
+      </div>
+    `;
+
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
+    this.container = overlay;
+
+    card.querySelector('#lc-dismiss-btn')?.addEventListener('click', () => this.close());
+    card.querySelector('#lc-open-settings-btn')?.addEventListener('click', () => {
+      this.close();
+      onOpenOptions();
+    });
+  }
+
   private attachEventListeners(defaultNumber: number, extension: string): void {
     if (!this.container) return;
 
@@ -222,10 +305,8 @@ export class SolutionModal {
     const cancelBtn = this.container.querySelector('#lc-cancel-btn') as HTMLButtonElement;
     const closeBtn = this.container.querySelector('#lc-close-btn') as HTMLButtonElement;
 
-    // Focus automatically
     input.focus();
 
-    // Filename live preview update
     input.addEventListener('input', () => {
       const val = input.value.trim();
       if (!val) {
@@ -237,7 +318,6 @@ export class SolutionModal {
       this.hideConflict();
     });
 
-    // Enter to submit
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
@@ -248,19 +328,10 @@ export class SolutionModal {
       }
     });
 
-    // Escape listener on window
-    const escListener = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        this.close();
-      }
-    };
-    window.addEventListener('keydown', escListener);
-
     saveBtn.addEventListener('click', () => this.handleSave());
     cancelBtn.addEventListener('click', () => this.close());
     closeBtn.addEventListener('click', () => this.close());
 
-    // Click outside overlay to close
     this.container.addEventListener('click', (e) => {
       if (e.target === this.container) {
         this.close();
@@ -302,34 +373,40 @@ export class SolutionModal {
     const conflictActions = this.container?.querySelector('#lc-conflict-actions') as HTMLElement;
     if (!conflictBox || !conflictMsg || !conflictActions) return;
 
-    const existingFile = FilenameManager.findConflictingFile(fileName, this.dirState.files);
-    this.pendingOverwriteSha = existingFile?.sha;
+    const safeFile = escapeHtml(fileName);
+    conflictMsg.innerHTML = `<strong>A solution file named <code>${safeFile}</code> already exists on GitHub.</strong>`;
 
-    const altName = FilenameManager.getAlternativeFilename(fileName, this.dirState.files);
-    const altDisplayName = altName.replace(/\.[^/.]+$/, '').replace(/-/g, ' ');
-
-    conflictMsg.innerHTML = `<strong>A solution named "${userInput || fileName}" already exists.</strong><br>Would you like to replace the existing file or save with an alternative name?`;
     conflictActions.innerHTML = `
-      <button id="lc-replace-btn" class="lc-btn lc-btn-secondary" style="color: #b45309; border-color: #fde68a;">Replace Existing</button>
-      <button id="lc-alt-btn" class="lc-btn lc-btn-primary">Save as ${altDisplayName}</button>
+      <button id="lc-overwrite-btn" class="lc-btn lc-btn-secondary" style="color: #dc2626; border-color: #fca5a5;">Replace Existing</button>
+      <button id="lc-new-name-btn" class="lc-btn lc-btn-primary">Save as New File</button>
+      <button id="lc-cancel-conflict-btn" class="lc-btn lc-btn-secondary">Cancel</button>
     `;
 
     conflictBox.style.display = 'block';
 
-    const replaceBtn = conflictActions.querySelector('#lc-replace-btn') as HTMLButtonElement;
-    const altBtn = conflictActions.querySelector('#lc-alt-btn') as HTMLButtonElement;
+    const overwriteBtn = conflictActions.querySelector('#lc-overwrite-btn') as HTMLButtonElement;
+    const newNameBtn = conflictActions.querySelector('#lc-new-name-btn') as HTMLButtonElement;
+    const cancelConflictBtn = conflictActions.querySelector('#lc-cancel-conflict-btn') as HTMLButtonElement;
 
-    replaceBtn.onclick = () => {
+    overwriteBtn.onclick = () => {
+      const existing = FilenameManager.findConflictingFile(fileName, this.dirState.files);
+      this.pendingOverwriteSha = existing?.sha;
       this.handleSave(false);
     };
 
-    altBtn.onclick = () => {
-      const input = this.container?.querySelector('#lc-sol-name-input') as HTMLInputElement;
-      if (input) {
-        input.value = altDisplayName;
+    newNameBtn.onclick = () => {
+      const altName = FilenameManager.getAlternativeFilename(fileName, this.dirState.files);
+      const nameInput = this.container?.querySelector('#lc-sol-name-input') as HTMLInputElement;
+      if (nameInput) {
+        nameInput.value = altName.replace(/\.[^/.]+$/, '');
+        this.hideConflict();
         this.pendingOverwriteSha = undefined;
         this.handleSave(false);
       }
+    };
+
+    cancelConflictBtn.onclick = () => {
+      this.hideConflict();
     };
   }
 
@@ -339,7 +416,8 @@ export class SolutionModal {
     const conflictActions = this.container?.querySelector('#lc-conflict-actions') as HTMLElement;
     if (!conflictBox || !conflictMsg || !conflictActions) return;
 
-    conflictMsg.innerHTML = `<strong>This identical code already exists on GitHub.</strong><br>Existing solution file: <code>${existingFileName}</code>`;
+    const safeFile = escapeHtml(existingFileName);
+    conflictMsg.innerHTML = `<strong>This identical code already exists on GitHub.</strong><br>Existing solution file: <code>${safeFile}</code>`;
     conflictActions.innerHTML = `
       <button id="lc-save-anyway-btn" class="lc-btn lc-btn-primary">Save Anyway</button>
       <button id="lc-cancel-conflict-btn" class="lc-btn lc-btn-secondary">Cancel</button>
@@ -370,11 +448,12 @@ export class SolutionModal {
     const card = this.container?.querySelector('#lc-modal-card') as HTMLElement;
     if (!card) return;
 
-    // Clear any previous timer
     if (this.autoCloseTimer) {
       clearTimeout(this.autoCloseTimer);
       this.autoCloseTimer = null;
     }
+
+    const safePath = escapeHtml(result.filePath || result.fileName);
 
     card.innerHTML = `
       <div style="text-align: center; padding: 16px 0;">
@@ -387,13 +466,13 @@ export class SolutionModal {
         <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin: 12px 0 16px 0; text-align: left; font-size: 13px;">
           <div style="color: #64748b; font-size: 11px; text-transform: uppercase; font-weight: 600;">File Path</div>
           <div style="font-family: monospace; color: #1e293b; word-break: break-all; margin-top: 2px;">
-            ${result.filePath || result.fileName}
+            ${safePath}
           </div>
         </div>
         <div style="display: flex; justify-content: center; gap: 10px; align-items: center;">
           ${
             result.githubUrl
-              ? `<a href="${result.githubUrl}" target="_blank" rel="noreferrer" class="lc-btn lc-btn-primary" style="text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">
+              ? `<a href="${escapeHtml(result.githubUrl)}" target="_blank" rel="noreferrer" class="lc-btn lc-btn-primary" style="text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">
                   View on GitHub ↗
                  </a>`
               : ''
@@ -414,7 +493,6 @@ export class SolutionModal {
       };
     }
 
-    // 5-second auto-close countdown
     let remainingSeconds = 5;
     const hintEl = card.querySelector('#lc-autoclose-hint') as HTMLElement;
     const countdownInterval = setInterval(() => {
@@ -442,7 +520,7 @@ export class SolutionModal {
     statusBox.style.border = '1px solid #fecaca';
     statusBox.style.padding = '10px 12px';
     statusBox.style.borderRadius = '6px';
-    statusBox.innerHTML = `<strong>Sync Failed:</strong> ${msg}`;
+    statusBox.textContent = `Sync Failed: ${msg}`;
   }
 
   close(): void {

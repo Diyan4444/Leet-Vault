@@ -25,13 +25,36 @@ export interface GitHubRepoConfig {
   repo: string;
   branch: string;
   rootFolder: string; // default "/" or "solutions"
+  verified?: boolean;
+  verifiedAt?: number;
 }
 
 export interface GitHubUser {
+  id?: number | string;
   login: string;
   name: string | null;
   avatarUrl: string;
   htmlUrl: string;
+}
+
+export interface ConnectionState {
+  connected: boolean;
+  githubUserId?: number | string;
+  githubUsername?: string;
+  githubAvatarUrl?: string;
+
+  repositoryOwner?: string;
+  repositoryName?: string;
+  repositoryUrl?: string;
+
+  repositoryVerified: boolean;
+  hasPushAccess: boolean;
+  isOwner?: boolean;
+
+  selectedBranch?: string;
+
+  verifiedAt?: number;
+  lastVerifiedAt?: number;
 }
 
 export interface ExistingSolutionFile {
@@ -66,6 +89,7 @@ export interface SyncResult {
   error?: string;
   conflictType?: 'DUPLICATE_NAME' | 'DUPLICATE_CODE' | 'GITHUB_ERROR';
   existingSolutionName?: string;
+  queuedForRetry?: boolean;
 }
 
 export interface PendingQueueItem {
@@ -74,11 +98,15 @@ export interface PendingQueueItem {
   request: SyncRequest;
   error?: string;
   retryCount: number;
+  repositoryOwner?: string;
+  repositoryName?: string;
+  branch?: string;
+  lastAttemptAt?: number;
 }
 
 export interface ExtensionSettings {
-  githubToken?: string; // Personal Access Token or OAuth access token
-  authMethod: 'pat' | 'oauth';
+  githubToken?: string; // OAuth access token
+  authMethod: 'oauth';
   repoConfig: GitHubRepoConfig;
   autoSync: boolean;
   syncOnlyAccepted: boolean;
@@ -88,6 +116,8 @@ export interface ExtensionSettings {
   includeRuntimeInReadme: boolean;
   includeMemoryInReadme: boolean;
   theme: 'light' | 'dark' | 'system';
+  ownerOnlyMode?: boolean;
+  oauthBrokerUrl?: string;
 }
 
 export interface SyncHistoryItem {

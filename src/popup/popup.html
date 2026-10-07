@@ -29,12 +29,18 @@
         <div class="status-row">
           <span class="label">GitHub</span>
           <span class="status-badge connected">
-            <span class="status-dot"></span> Connected
+            <span class="status-dot"></span> <span id="github-user-badge">Connected</span>
           </span>
         </div>
         <div class="status-row">
           <span class="label">Repository</span>
           <span id="repo-display" class="value-highlight">-</span>
+        </div>
+        <div id="repo-verified-row" class="status-row" style="display: none;">
+          <span class="label">Access</span>
+          <span class="status-badge connected" style="font-size: 11px;">
+            ✓ Verified (Push access confirmed)
+          </span>
         </div>
         <div class="status-row">
           <span class="label">Branch</span>
@@ -46,14 +52,24 @@
         </div>
       </div>
 
-      <div class="section-title">Recent Solutions</div>
+      <!-- Pending Syncs Section -->
+      <div id="pending-section" style="display: none; margin-top: 14px;">
+        <div class="section-title" style="color: #d97706; display: flex; justify-content: space-between; align-items: center;">
+          <span>Pending Sync Queue</span>
+          <span id="pending-count-badge" style="background: #fef3c7; color: #92400e; padding: 1px 6px; border-radius: 10px; font-size: 11px; font-weight: 700;">0</span>
+        </div>
+        <div id="pending-list" class="recent-list" style="margin-top: 6px;"></div>
+      </div>
+
+      <div class="section-title" style="margin-top: 14px;">Recent Solutions</div>
       <div id="recent-list" class="recent-list">
         <div class="empty-state">No solutions synced yet</div>
       </div>
 
       <div class="action-footer">
-        <button id="open-github-btn" class="btn btn-secondary">Open GitHub ↗</button>
-        <button id="open-settings-btn" class="btn btn-secondary">Settings</button>
+        <button id="open-github-btn" class="btn btn-secondary">Open Repository ↗</button>
+        <button id="change-repo-btn" class="btn btn-secondary">Change Repository</button>
+        <button id="disconnect-popup-btn" class="btn btn-secondary" style="color: #dc2626;">Disconnect</button>
       </div>
     </div>
 
@@ -62,8 +78,9 @@
       <div class="disconnected-hero">
         <div class="alert-icon">!</div>
         <h3>GitHub Not Connected</h3>
-        <p>Connect your GitHub account and repository to start automatically syncing your LeetCode solutions.</p>
+        <p>Authorize with GitHub to start automatically syncing your accepted LeetCode solutions.</p>
         <button id="connect-btn" class="btn btn-primary btn-large">Connect GitHub</button>
+        <div id="auth-error-hint" style="color: #dc2626; font-size: 12px; margin-top: 10px; display: none;"></div>
       </div>
     </div>
   </div>

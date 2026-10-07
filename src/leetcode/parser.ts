@@ -36,22 +36,28 @@ export class LeetCodeParser {
         text === 'c#' ||
         text === 'c' ||
         text === 'go' ||
-        text === 'rust'
+        text === 'rust' ||
+        text === 'kotlin' ||
+        text === 'swift'
       ) {
         return text;
       }
     }
 
-    return 'cpp'; // default safe assumption
+    return 'cpp';
   }
 
   /**
-   * Extracts source code from Monaco Editor or CodeMirror instances on the page.
+   * Extracts exact, full source code from Monaco Editor or CodeMirror instances on the page.
+   * Preserves all pragmas, includes, helper functions, macros, structs, class Solution,
+   * comments, indentation, and code after Solution.
    */
   static extractCode(): string | null {
+    if (typeof document === 'undefined') {
+      return null;
+    }
+
     // Strategy 1: Check Monaco textarea value or hidden editor buffer
-    // LeetCode's Monaco editor uses an input textarea (<textarea class="inputarea ...">)
-    // or store state inside element attributes
     const monacoTextarea = document.querySelector('.monaco-editor textarea') as HTMLTextAreaElement | null;
     if (monacoTextarea && monacoTextarea.value && monacoTextarea.value.trim().length > 0) {
       return monacoTextarea.value;
@@ -65,7 +71,14 @@ export class LeetCodeParser {
         if (models && models.length > 0) {
           for (const model of models) {
             const val = model.getValue();
-            if (val && val.trim().length > 0 && (val.includes('class Solution') || val.includes('function') || val.includes('#include') || val.includes('def '))) {
+            if (
+              val &&
+              val.trim().length > 0 &&
+              (val.includes('class Solution') ||
+                val.includes('function') ||
+                val.includes('#include') ||
+                val.includes('def '))
+            ) {
               return val;
             }
           }
@@ -86,7 +99,6 @@ export class LeetCodeParser {
     // Strategy 4: Query Monaco lines container preserving exact line positioning
     const monacoLines = document.querySelectorAll('.monaco-editor .view-lines .view-line');
     if (monacoLines.length > 0) {
-      // Sort lines by their top css position to prevent any line reordering in virtualized renderers
       const lineElements = Array.from(monacoLines) as HTMLElement[];
       lineElements.sort((a, b) => {
         const topA = parseFloat(a.style.top || '0');
@@ -121,52 +133,74 @@ export class LeetCodeParser {
   }
 
   /**
-   * Extracts submission metrics (Runtime and Memory) from the submission result banner.
+   * Captures snapshot of source code at the exact moment submit is clicked.
    */
-  static extractMetrics(): { runtime?: string; memory?: string } {
+  static async captureSourceSnapshot(): Promise<string | null> {
+    const directCode = this.extractCode();
+    if (directCode && directCode.trim().length > 0) {
+      return directCode;
+    }
+    return null;
+  }
+
+  /**
+   * Extracts submission metrics (Runtime and Memory) from the submission result banner or target container.
+   * Normalizes values into stable strings e.g. "42 ms" (preserving "0 ms") or "N/A".
+   */
+  static extractMetrics(targetContainer?: Element | null): { runtime: string; memory: string } {
     let runtime: string | undefined;
     let memory: string | undefined;
 
     if (typeof document === 'undefined') {
-      return { runtime, memory };
+      return { runtime: 'N/A', memory: 'N/A' };
     }
 
-    // Search for runtime/memory text patterns e.g. "Runtime 12 ms", "Memory 20.1 MB"
-    // Usually in divs or spans near "Accepted"
-    const textNodes = document.querySelectorAll('span, div');
+    const searchRoot = targetContainer || document;
+    const textNodes = searchRoot.querySelectorAll('span, div, p');
+
     for (const el of Array.from(textNodes)) {
       const text = el.textContent?.trim() || '';
+
       if (!runtime) {
         const rtMatch = text.match(/Runtime\s*[:\s]?\s*(\d+(\.\d+)?\s*(ms|s))/i);
         if (rtMatch) {
           runtime = rtMatch[1];
         }
       }
+
       if (!memory) {
         const memMatch = text.match(/Memory\s*[:\s]?\s*(\d+(\.\d+)?\s*(MB|KB|GB))/i);
         if (memMatch) {
           memory = memMatch[1];
         }
       }
+
       if (runtime && memory) break;
     }
 
-    return { runtime, memory };
+    return {
+      runtime: runtime || 'N/A',
+      memory: memory || 'N/A',
+    };
   }
 
   /**
-   * Synthesizes full LeetCodeSubmission object when Accepted result is confirmed.
+   * Synthesizes full LeetCodeSubmission object using the captured code snapshot.
+   * Never rereads editor after Accepted to prevent saving post-submission edits.
    */
-  static parseAcceptedSubmission(overrideCode?: string | null): LeetCodeSubmission | null {
+  static parseAcceptedSubmission(
+    codeSnapshot: string | null,
+    targetContainer?: Element | null
+  ): LeetCodeSubmission | null {
     const problem = LeetCodeProblemParser.extractProblemDetails();
     if (!problem) return null;
 
-    const code = (overrideCode && overrideCode.trim().length > 0) ? overrideCode : this.extractCode();
+    const code = (codeSnapshot && codeSnapshot.trim().length > 0) ? codeSnapshot : this.extractCode();
     if (!code) return null;
 
     const rawLang = this.extractLanguage();
     const resolvedLang = resolveLanguage(rawLang).id;
-    const { runtime, memory } = this.extractMetrics();
+    const { runtime, memory } = this.extractMetrics(targetContainer);
 
     return {
       problem,

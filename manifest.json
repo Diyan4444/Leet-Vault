@@ -4,7 +4,8 @@
   "version": "1.0.0",
   "description": "Automatically sync accepted LeetCode solutions to GitHub with unlimited named solutions per problem.",
   "permissions": [
-    "storage"
+    "storage",
+    "identity"
   ],
   "host_permissions": [
     "https://leetcode.com/*",
