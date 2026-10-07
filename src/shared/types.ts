@@ -78,6 +78,7 @@ export interface SyncRequest {
   customSolutionName?: string; // e.g. "Heap Sort"
   overwriteSha?: string; // If replacing an existing file
   forceSaveAnyway?: boolean;
+  cachedDirState?: ProblemDirectoryState;
 }
 
 export interface SyncResult {

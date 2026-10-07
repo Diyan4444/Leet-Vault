@@ -15,6 +15,7 @@ import { DuplicateDetector } from './duplicate-detector';
 import { ReadmeGenerator, SolutionRowData } from './readme-generator';
 import { formatProblemFolderName } from '../utils/sanitize';
 import { STORAGE_KEYS } from '../shared/constants';
+import { PerformanceProfiler } from '../utils/profiler';
 
 export class SyncManager {
   /**
@@ -106,49 +107,79 @@ export class SyncManager {
       };
     }
 
-    // Security check 1: Verify authenticated push access immediately before every write
-    const writeCheck = await GitHubRepositoriesService.verifyRepoWriteAccess(
-      token,
-      owner,
-      repo,
-      {
-        ownerOnly: settings.ownerOnlyMode,
-        currentUsername: user?.login,
-      }
-    );
+    PerformanceProfiler.mark('t5_authRetrieved');
 
-    if (!writeCheck.hasWriteAccess) {
-      // Invalidate stored verification
+    // Security check 1 & 2: Intelligent Cached Repository & Branch Verification
+    // Valid for 10 minutes if already verified and repository parameters haven't changed.
+    const isVerificationValid =
+      !!settings.repoConfig.verified &&
+      !!settings.repoConfig.verifiedAt &&
+      Date.now() - settings.repoConfig.verifiedAt < 10 * 60 * 1000 &&
+      settings.repoConfig.owner.toLowerCase() === owner.toLowerCase() &&
+      settings.repoConfig.repo.toLowerCase() === repo.toLowerCase();
+
+    if (!isVerificationValid) {
+      const writeCheck = await GitHubRepositoriesService.verifyRepoWriteAccess(
+        token,
+        owner,
+        repo,
+        {
+          ownerOnly: settings.ownerOnlyMode,
+          currentUsername: user?.login,
+        }
+      );
+
+      if (!writeCheck.hasWriteAccess) {
+        // Invalidate stored verification
+        await StorageService.saveSettings({
+          repoConfig: {
+            ...settings.repoConfig,
+            verified: false,
+          },
+        });
+        return {
+          success: false,
+          fileName: '',
+          filePath: '',
+          error: writeCheck.error || 'Repository access denied. Write permission required.',
+        };
+      }
+
+      // Update cached verification timestamp
       await StorageService.saveSettings({
         repoConfig: {
           ...settings.repoConfig,
-          verified: false,
+          verified: true,
+          verifiedAt: Date.now(),
         },
       });
-      return {
-        success: false,
-        fileName: '',
-        filePath: '',
-        error: writeCheck.error || 'Repository access denied. Write permission required.',
-      };
     }
 
-    // Security check 2: Verify target branch still exists before committing
+    PerformanceProfiler.mark('t6_repoVerified');
+
+    // Security check 2: Verify target branch
     const targetBranch = branch || 'main';
-    const branchCheck = await GitHubRepositoriesService.getBranch(token, owner, repo, targetBranch);
-    if (!branchCheck) {
-      return {
-        success: false,
-        fileName: '',
-        filePath: '',
-        error: `Selected branch "${targetBranch}" does not exist in repository ${owner}/${repo}. Please select an existing branch.`,
-      };
+    if (!isVerificationValid || settings.repoConfig.branch !== targetBranch) {
+      const branchCheck = await GitHubRepositoriesService.getBranch(token, owner, repo, targetBranch);
+      if (!branchCheck) {
+        return {
+          success: false,
+          fileName: '',
+          filePath: '',
+          error: `Selected branch "${targetBranch}" does not exist in repository ${owner}/${repo}. Please select an existing branch.`,
+        };
+      }
     }
+
+    PerformanceProfiler.mark('t7_branchVerified');
 
     const { submission, customSolutionName, overwriteSha, forceSaveAnyway } = request;
     const { problem, code, language, runtime, memory } = submission;
 
-    const dirState = await this.getProblemDirectoryState(problem.id, problem.slug);
+    // Reuse directory state from pre-modal scan if available to eliminate redundant GET request
+    const dirState = request.cachedDirState || (await this.getProblemDirectoryState(problem.id, problem.slug));
+    PerformanceProfiler.mark('t8_dirStateRetrieved');
+
     const langConfig = resolveLanguage(language);
 
     // 1. Check for Duplicate Code if enabled and not explicitly bypassed
@@ -173,6 +204,8 @@ export class SyncManager {
         };
       }
     }
+
+    PerformanceProfiler.mark('t9_duplicateCheckDone');
 
     // 2. Resolve Target Filename
     const { fileName, solutionName } = FilenameManager.resolveTargetFilename(
@@ -202,6 +235,7 @@ export class SyncManager {
 
     try {
       // 5. Commit Solution File
+      PerformanceProfiler.mark('t10_solutionUploadStart');
       const targetSha = overwriteSha || (existingFile ? existingFile.sha : undefined);
       const commitRes = await GitHubContentsService.putFile(
         token,
@@ -213,6 +247,7 @@ export class SyncManager {
         targetBranch,
         targetSha
       );
+      PerformanceProfiler.mark('t11_solutionUploadDone');
 
       const githubFileUrl = `https://github.com/${owner}/${repo}/blob/${targetBranch}/${fullFilePath}`;
 
@@ -223,31 +258,43 @@ export class SyncManager {
       }
       if (solutionCount < 1) solutionCount = 1;
 
+      // 6. Update Problem & Root READMEs in parallel for maximum speed
+      const readmeTasks: Promise<any>[] = [];
       if (settings.generateProblemReadme) {
-        await this.syncProblemReadme(
-          token,
-          owner,
-          repo,
-          targetBranch,
-          dirState,
-          request,
-          fileName,
-          solutionName
+        readmeTasks.push(
+          this.syncProblemReadme(
+            token,
+            owner,
+            repo,
+            targetBranch,
+            dirState,
+            request,
+            fileName,
+            solutionName
+          )
         );
       }
 
-      // 7. Maintain repository root README if enabled
       if (settings.updateRootReadme) {
-        await this.syncRootReadme(
-          token,
-          owner,
-          repo,
-          targetBranch,
-          problem,
-          dirState.folderName,
-          solutionCount
+        readmeTasks.push(
+          this.syncRootReadme(
+            token,
+            owner,
+            repo,
+            targetBranch,
+            problem,
+            dirState.folderName,
+            solutionCount
+          )
         );
       }
+
+      if (readmeTasks.length > 0) {
+        await Promise.allSettled(readmeTasks);
+      }
+
+      PerformanceProfiler.mark('t12_problemReadmeDone');
+      PerformanceProfiler.mark('t13_rootReadmeDone');
 
       // 8. Record to Sync History
       await StorageService.addSyncHistory({
@@ -263,6 +310,8 @@ export class SyncManager {
         timestamp: Date.now(),
       });
 
+      PerformanceProfiler.mark('t14_historySaved');
+
       return {
         success: true,
         fileName,
@@ -273,6 +322,16 @@ export class SyncManager {
     } catch (err: unknown) {
       console.error('GitHub file upload error:', err);
       const errMsg = (err as Error).message || 'Failed to push solution to GitHub';
+
+      // Security check: if permission error occurs on write, invalidate verification cache
+      if (errMsg.includes('401') || errMsg.includes('403') || errMsg.includes('permission')) {
+        await StorageService.saveSettings({
+          repoConfig: {
+            ...settings.repoConfig,
+            verified: false,
+          },
+        });
+      }
 
       // Check if error is a temporary network or GitHub server/rate-limit error
       const isTemporary =
@@ -368,7 +427,7 @@ export class SyncManager {
 
       // Check for current readme sha
       let currentSha = dirState.readmeSha;
-      if (!currentSha) {
+      if (!currentSha && dirState.readmeExists) {
         const curFile = await GitHubContentsService.getFileContent(
           token,
           owner,
@@ -378,6 +437,9 @@ export class SyncManager {
         );
         if (curFile) {
           currentSha = curFile.sha;
+          if (curFile.content.trim() === readmeMd.trim()) {
+            return; // Skip write: content is identical
+          }
         }
       }
 
@@ -446,6 +508,11 @@ export class SyncManager {
 
       const updatedList = Array.from(problemMap.values());
       const newRootContent = ReadmeGenerator.updateRootReadmeContent(existingContent, updatedList);
+
+      // Skip write if root README table content is unchanged
+      if (newRootContent.trim() === existingContent.trim()) {
+        return;
+      }
 
       await GitHubContentsService.putFile(
         token,

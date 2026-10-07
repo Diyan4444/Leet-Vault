@@ -9,7 +9,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   const oauthUnconnectedBox = document.getElementById('oauth-unconnected-box') as HTMLElement;
   const oauthConnectedBox = document.getElementById('oauth-connected-box') as HTMLElement;
   const connectOauthBtn = document.getElementById('connect-oauth-btn') as HTMLButtonElement;
-  const brokerUrlInput = document.getElementById('broker-url-input') as HTMLInputElement;
   const userIdentityDisplay = document.getElementById('user-identity-display') as HTMLElement;
   const disconnectBtn = document.getElementById('disconnect-btn') as HTMLButtonElement;
 
@@ -205,9 +204,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         problemReadmeToggle.checked = settings.generateProblemReadme;
         rootReadmeToggle.checked = settings.updateRootReadme;
         themeSelect.value = settings.theme || 'system';
-        if (brokerUrlInput) {
-          brokerUrlInput.value = settings.oauthBrokerUrl || '';
-        }
 
         renderPendingQueue(response?.pendingQueue || []);
       }
@@ -222,8 +218,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     connectOauthBtn.disabled = true;
     connectOauthBtn.textContent = 'Connecting with GitHub...';
 
-    const customBroker = brokerUrlInput ? brokerUrlInput.value.trim() : undefined;
-    chrome.runtime.sendMessage({ type: MESSAGES.START_OAUTH_FLOW, payload: { brokerUrl: customBroker } }, (res) => {
+    chrome.runtime.sendMessage({ type: MESSAGES.START_OAUTH_FLOW }, (res) => {
       connectOauthBtn.disabled = false;
       connectOauthBtn.textContent = 'Connect GitHub Account';
 
@@ -341,7 +336,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       generateProblemReadme: problemReadmeToggle.checked,
       updateRootReadme: rootReadmeToggle.checked,
       theme: themeSelect.value as 'light' | 'dark' | 'system',
-      oauthBrokerUrl: brokerUrlInput ? brokerUrlInput.value.trim() || undefined : undefined,
     };
 
     await StorageService.saveSettings(newSettings);
