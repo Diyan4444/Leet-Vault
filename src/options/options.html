@@ -43,9 +43,11 @@
           <button id="connect-oauth-btn" class="btn btn-primary" style="font-size: 14px; padding: 10px 20px;">
             Connect GitHub Account
           </button>
-          <span class="field-hint" style="display: block; margin-top: 8px;">
-            Secure token exchange handled via serverless OAuth broker. No client secrets are stored in the extension.
-          </span>
+          <div class="form-group" style="max-width: 480px; margin-top: 14px;">
+            <label for="broker-url-input" style="font-size: 12px; font-weight: 600; color: #94a3b8;">OAuth Broker URL</label>
+            <input type="text" id="broker-url-input" placeholder="https://leet-git-hub.vercel.app or http://localhost:3000" />
+            <span class="field-hint">Defaults to <code>https://leet-git-hub.vercel.app</code> (or use <code>http://localhost:3000</code> for local testing).</span>
+          </div>
         </div>
 
         <!-- Authenticated account box -->

@@ -6,8 +6,9 @@
  * Keeps GITHUB_CLIENT_SECRET secure on the server side - never in the extension bundle.
  */
 
-const https = require('https');
-const url = require('url');
+import https from 'node:https';
+import http from 'node:http';
+import url from 'node:url';
 
 // Environment variables configured on your hosting platform
 const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID || '';
@@ -64,7 +65,7 @@ function exchangeCodeForToken(code) {
 /**
  * Main HTTP request handler (works for Node http.createServer, Express, or Vercel handler)
  */
-async function handleRequest(req, res) {
+export default async function handleRequest(req, res) {
   const parsedUrl = url.parse(req.url, true);
   const pathname = parsedUrl.pathname;
   const query = parsedUrl.query;
@@ -106,8 +107,8 @@ async function handleRequest(req, res) {
       })
     );
 
-    const protocol = req.headers['x-forwarded-proto'] || 'https';
-    const host = req.headers['host'];
+    const host = req.headers['host'] || 'localhost:3000';
+    const protocol = req.headers['x-forwarded-proto'] || (host.includes('localhost') ? 'http' : 'https');
     const brokerCallbackUrl = `${protocol}://${host}/callback`;
 
     const githubAuthUrl = `https://github.com/login/oauth/authorize?client_id=${GITHUB_CLIENT_ID}&scope=repo&redirect_uri=${encodeURIComponent(
@@ -191,15 +192,9 @@ async function handleRequest(req, res) {
   res.end('Not Found');
 }
 
-// Export for serverless (Vercel)
-module.exports = handleRequest;
-
-// If executed directly with `node broker/index.js`
-if (require.main === module) {
-  const http = require('http');
-  const port = process.env.PORT || 3000;
-  const server = http.createServer(handleRequest);
-  server.listen(port, () => {
-    console.log(`LeetCode GitHub Sync OAuth Broker running at http://localhost:${port}`);
-  });
-}
+// Start local server if run directly
+const port = process.env.PORT || 3000;
+const server = http.createServer(handleRequest);
+server.listen(port, () => {
+  console.log(`LeetCode GitHub Sync OAuth Broker running at http://localhost:${port}`);
+});
