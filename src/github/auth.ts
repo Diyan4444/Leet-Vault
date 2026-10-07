@@ -3,7 +3,7 @@ import { StorageService } from '../shared/storage';
 import { GitHubUser } from '../shared/types';
 
 export class GitHubOAuthClient {
-  public static DEFAULT_BROKER_URL = 'https://leetcode-github-sync.vercel.app';
+  public static DEFAULT_BROKER_URL = 'https://leet-git-hub.vercel.app';
 
   /**
    * Starts OAuth authorization flow via chrome.identity.launchWebAuthFlow
