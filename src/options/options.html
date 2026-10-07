@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Settings — LeetCode GitHub Sync</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div class="layout-container">
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <svg class="brand-icon" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path>
+        </svg>
+        <span class="sidebar-title">LeetCode Sync</span>
+      </div>
+      <nav class="nav-links">
+        <a href="#github-section" class="nav-link active">GitHub Connection</a>
+        <a href="#sync-section" class="nav-link">Sync Preferences</a>
+        <a href="#readme-section" class="nav-link">README Settings</a>
+        <a href="#appearance-section" class="nav-link">Appearance</a>
+      </nav>
+    </aside>
+
+    <main class="content">
+      <header class="content-header">
+        <h1>Extension Settings</h1>
+        <p class="subtitle">Configure your GitHub destination repository, synchronization preferences, and folder structure.</p>
+      </header>
+
+      <!-- Status banner -->
+      <div id="status-banner" class="banner" style="display: none;"></div>
+
+      <!-- GitHub Section -->
+      <section id="github-section" class="card">
+        <h2>GitHub Repository Connection</h2>
+        <p class="card-desc">Enter your target GitHub repository URL to link with the extension.</p>
+
+        <div class="form-group">
+          <label for="repo-url-input">GitHub Repository</label>
+          <div class="input-with-button">
+            <input type="text" id="repo-url-input" placeholder="https://github.com/USERNAME/REPOSITORY" autocomplete="off" />
+            <button id="connect-github-btn" class="btn btn-primary">Connect GitHub</button>
+          </div>
+          <span class="field-hint">e.g. <code>https://github.com/Diyan4444/LeetCode</code> or <code>username/repository</code></span>
+        </div>
+
+        <div id="connection-status-box" class="user-info" style="display: none;">
+          <div class="status-indicator-icon" style="width: 32px; height: 32px; border-radius: 50%; background: #dcfce7; color: #15803d; display: flex; align-items: center; justify-content: center; font-weight: bold;">
+            ✓
+          </div>
+          <div>
+            <div style="font-weight: 600; font-size: 14px; color: #15803d;">Status</div>
+            <div id="status-line-1" style="font-size: 13px; color: #334155;">✓ GitHub account connected</div>
+            <div id="status-line-2" style="font-size: 13px; color: #334155;">✓ Repository linked: <strong id="linked-repo-name"></strong></div>
+          </div>
+          <button id="disconnect-btn" class="btn btn-secondary" style="margin-left: auto; font-size: 12px; padding: 6px 10px;">Disconnect</button>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group flex-1">
+            <label for="branch-select">Branch</label>
+            <select id="branch-select">
+              <option value="main">main</option>
+            </select>
+          </div>
+
+          <div class="form-group flex-1">
+            <label for="root-folder-input">Root Folder (Optional)</label>
+            <input type="text" id="root-folder-input" placeholder="Leave empty for root (/), or e.g. solutions" />
+          </div>
+        </div>
+      </section>
+
+      <!-- Sync Preferences Section -->
+      <section id="sync-section" class="card">
+        <h2>Sync Preferences</h2>
+
+        <div class="toggle-group">
+          <div class="toggle-info">
+            <label class="toggle-label" for="sync-accepted-toggle">Sync only accepted submissions</label>
+            <span class="field-hint">Only show the solution-saving popup for submissions that passed all tests.</span>
+          </div>
+          <input type="checkbox" id="sync-accepted-toggle" checked />
+        </div>
+
+        <div class="toggle-group">
+          <div class="toggle-info">
+            <label class="toggle-label" for="duplicate-detection-toggle">Duplicate code detection</label>
+            <span class="field-hint">Warn before saving if identical code already exists on GitHub for this problem.</span>
+          </div>
+          <input type="checkbox" id="duplicate-detection-toggle" checked />
+        </div>
+
+        <div class="toggle-group">
+          <div class="toggle-info">
+            <label class="toggle-label" for="auto-sync-toggle">Auto-save with default name</label>
+            <span class="field-hint">Bypass popup and automatically commit as Solution N on accepted submission (Manual popup recommended).</span>
+          </div>
+          <input type="checkbox" id="auto-sync-toggle" />
+        </div>
+      </section>
+
+      <!-- README Settings Section -->
+      <section id="readme-section" class="card">
+        <h2>README Generation</h2>
+
+        <div class="toggle-group">
+          <div class="toggle-info">
+            <label class="toggle-label" for="problem-readme-toggle">Generate problem README.md</label>
+            <span class="field-hint">Creates a structured table of all solutions, runtimes, and languages in each problem directory.</span>
+          </div>
+          <input type="checkbox" id="problem-readme-toggle" checked />
+        </div>
+
+        <div class="toggle-group">
+          <div class="toggle-info">
+            <label class="toggle-label" for="root-readme-toggle">Maintain root repository README</label>
+            <span class="field-hint">Safely updates the overview table in the root README without touching manual notes.</span>
+          </div>
+          <input type="checkbox" id="root-readme-toggle" checked />
+        </div>
+      </section>
+
+      <!-- Appearance Section -->
+      <section id="appearance-section" class="card">
+        <h2>Appearance</h2>
+        <div class="form-group" style="max-width: 200px;">
+          <label for="theme-select">Theme</label>
+          <select id="theme-select">
+            <option value="system">System Default</option>
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+          </select>
+        </div>
+      </section>
+
+      <div class="sticky-footer">
+        <button id="save-settings-btn" class="btn btn-primary">Save Changes</button>
+      </div>
+    </main>
+  </div>
+
+  <script type="module" src="options.ts"></script>
+</body>
+</html>

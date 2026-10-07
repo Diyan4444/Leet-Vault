@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "LeetCode → GitHub Multi-Solution Sync",
+  "version": "1.0.0",
+  "description": "Automatically sync accepted LeetCode solutions to GitHub with unlimited named solutions per problem.",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://leetcode.com/*",
+    "https://api.github.com/*"
+  ],
+  "background": {
+    "service_worker": "background/service-worker.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://leetcode.com/problems/*"
+      ],
+      "js": [
+        "content/leetcode-content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "src/popup/popup.html"
+  },
+  "options_page": "src/options/options.html"
+}

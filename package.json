@@ -1,0 +1,20 @@
+{
+  "name": "leetcode-github-sync",
+  "version": "1.0.0",
+  "description": "Automatically sync accepted LeetCode solutions to GitHub with multi-solution support.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite build --watch",
+    "build": "tsc && vite build && vite build --config vite.content.config.ts && node scripts/copy-assets.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "generate-icons": "node scripts/generate-icons.mjs"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.308",
+    "@types/node": "^22.13.9",
+    "typescript": "^5.7.3",
+    "vite": "^6.2.0",
+    "vitest": "^3.0.7"
+  }
+}
