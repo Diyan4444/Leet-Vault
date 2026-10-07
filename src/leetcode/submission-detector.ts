@@ -2,6 +2,7 @@ import { LeetCodeParser } from './parser';
 import { LeetCodeProblemParser } from './problem-parser';
 import { LeetCodeSubmission } from '../shared/types';
 import { computeCodeHash } from '../utils/hashing';
+import { PerformanceProfiler } from '../utils/profiler';
 
 export type SubmissionCallback = (submission: LeetCodeSubmission) => void;
 
@@ -34,8 +35,10 @@ export class SubmissionDetector {
   private timeoutTimer: any = null;
   private mutationObserver: MutationObserver | null = null;
   private clickListener: ((e: MouseEvent) => void) | null = null;
+  private keyListener: ((e: KeyboardEvent) => void) | null = null;
   private navigationChecker: any = null;
   private currentProblemSlug: string | null = null;
+  private hasSeenJudging: boolean = false;
 
   constructor(onAccepted: SubmissionCallback) {
     this.onAcceptedCallback = onAccepted;
@@ -49,42 +52,59 @@ export class SubmissionDetector {
   }
 
   /**
-   * Starts event listeners for submit clicks and SPA navigation.
-   * Does NOT start a permanent MutationObserver searching for 'Accepted'.
+   * Starts event listeners for submit clicks, keyboard shortcuts, and SPA navigation.
    */
   start(): void {
     if (this.clickListener) return;
 
     this.currentProblemSlug = LeetCodeProblemParser.extractProblemSlug();
 
-    // 1. Listen for user clicking the Submit button
+    // 1. Listen for user clicking the Submit button (various LeetCode DOM structures)
     this.clickListener = async (e: MouseEvent) => {
       const target = e.target as HTMLElement | null;
-      if (!target) return;
+      if (!target || typeof target.closest !== 'function') return;
 
-      const btn = target.closest('button');
+      const btn =
+        target.closest('button') ||
+        target.closest('[data-e2e-locator="console-submit-button"]') ||
+        target.closest('[data-cy="submit-code-btn"]') ||
+        target.closest('[data-cypress="submit-code-btn"]') ||
+        target.closest('[role="button"]');
       if (!btn) return;
 
-      const btnText = (btn.textContent || '').trim();
+      const btnText = (btn.textContent || '').trim().toLowerCase();
+      const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
+      const titleAttr = (btn.getAttribute('title') || '').toLowerCase();
+      const dataLocator = btn.getAttribute('data-e2e-locator') || '';
+      const dataCy = btn.getAttribute('data-cy') || '';
+      const dataCypress = btn.getAttribute('data-cypress') || '';
+
       const isSubmitBtn =
-        btn.getAttribute('data-e2e-locator') === 'console-submit-button' ||
-        btn.getAttribute('data-cy') === 'submit-code-btn' ||
-        btnText.includes('Submit');
+        dataLocator === 'console-submit-button' ||
+        dataCy === 'submit-code-btn' ||
+        dataCypress === 'submit-code-btn' ||
+        btnText.includes('submit') ||
+        ariaLabel.includes('submit') ||
+        titleAttr.includes('submit');
 
       if (!isSubmitBtn) return;
 
-      // Only transition from IDLE state
-      if (this.state !== SubmissionState.IDLE) {
-        // If already submitting or waiting, don't re-trigger
-        return;
-      }
-
-      await this.handleSubmitClick();
+      await this.handleSubmitTrigger();
     };
 
     document.addEventListener('click', this.clickListener, true);
 
-    // 2. Track SPA navigation to reset state if problem changes
+    // 2. Listen for keyboard submit shortcut (Ctrl+Enter or Cmd+Enter)
+    this.keyListener = async (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        console.log('[LeetCode Sync] Keyboard shortcut (Ctrl/Cmd+Enter) submit detected.');
+        await this.handleSubmitTrigger();
+      }
+    };
+
+    document.addEventListener('keydown', this.keyListener, true);
+
+    // 3. Track SPA navigation to reset state if problem changes
     this.navigationChecker = setInterval(() => {
       const activeSlug = LeetCodeProblemParser.extractProblemSlug();
       if (activeSlug && this.currentProblemSlug && activeSlug !== this.currentProblemSlug) {
@@ -103,6 +123,11 @@ export class SubmissionDetector {
       this.clickListener = null;
     }
 
+    if (this.keyListener) {
+      document.removeEventListener('keydown', this.keyListener, true);
+      this.keyListener = null;
+    }
+
     if (this.navigationChecker) {
       clearInterval(this.navigationChecker);
       this.navigationChecker = null;
@@ -114,14 +139,28 @@ export class SubmissionDetector {
   }
 
   /**
+   * Re-arms submission detection immediately when Submit is triggered,
+   * ensuring repeated submissions are never ignored or dropped.
+   */
+  private async handleSubmitTrigger(): Promise<void> {
+    if (this.state !== SubmissionState.IDLE) {
+      this.cleanupWaitingState();
+      this.state = SubmissionState.IDLE;
+    }
+    await this.handleSubmitClick();
+  }
+
+  /**
    * Called immediately when user clicks Submit.
    * Captures exact editor source snapshot before any DOM mutation or reset.
    */
   private async handleSubmitClick(): Promise<void> {
+    PerformanceProfiler.mark('t0_submitClicked');
     this.state = SubmissionState.SUBMITTING;
 
     try {
       const sourceSnapshot = await LeetCodeParser.captureSourceSnapshot();
+      PerformanceProfiler.mark('t1_sourceCaptured');
       if (!sourceSnapshot || sourceSnapshot.trim().length === 0) {
         console.warn('[LeetCode Sync] Empty source code captured; aborting submission tracking.');
         this.state = SubmissionState.IDLE;
@@ -161,11 +200,12 @@ export class SubmissionDetector {
    */
   private startWaitingForResult(): void {
     this.cleanupWaitingState();
+    this.hasSeenJudging = false;
 
-    // 1. Active polling loop (every 400ms, up to 25s)
+    // 1. Responsive active polling loop (every 250ms, up to 25s)
     this.pollInterval = setInterval(() => {
       this.checkForCurrentSubmissionResult();
-    }, 400);
+    }, 250);
 
     // 2. Targeted MutationObserver active ONLY while in WAITING_FOR_RESULT
     this.mutationObserver = new MutationObserver(() => {
@@ -204,23 +244,42 @@ export class SubmissionDetector {
       return;
     }
 
+    const timeSinceSubmit = Date.now() - this.currentAttempt.submittedAt;
+
+    // Detect if LeetCode has transitioned through Judging / Pending state
+    const pageText = document.body ? (document.body.textContent || '') : '';
+    if (pageText.includes('Judging') || pageText.includes('Pending')) {
+      this.hasSeenJudging = true;
+    }
+
     // Selectors for submission result containers
     const candidateNodes = document.querySelectorAll(
-      'span[data-e2e-locator="submission-result"], div[data-e2e-locator="submission-result"], div[data-cy="submission-result"], span[class*="text-green"], div[class*="text-green"], span[class*="text-red"], div[class*="text-red"]'
+      'span[data-e2e-locator="submission-result"], div[data-e2e-locator="submission-result"], div[data-cy="submission-result"], span[class*="text-green"], div[class*="text-green"], span[class*="text-sd-green"], div[class*="text-sd-green"], span[class*="text-red"], div[class*="text-red"], [class*="status-column"]'
     );
+
+    const isFreshPostSubmit = this.hasSeenJudging || timeSinceSubmit >= 800;
 
     for (const node of Array.from(candidateNodes)) {
       const text = (node.textContent || '').trim();
       if (!text) continue;
 
-      // Skip elements that existed before this submission was clicked
+      if (text === 'Pending' || text === 'Judging') {
+        this.hasSeenJudging = true;
+        continue;
+      }
+
+      // Check if signature existed before submit click.
+      // If we observed judging OR >800ms have passed (LeetCode judging duration),
+      // treat the result as fresh even if layout coordinates matched earlier runs.
       const signature = this.getNodeSignature(node as HTMLElement);
-      if (this.currentAttempt.initialResultSignatures.has(signature)) {
+      const isPreExisting = this.currentAttempt.initialResultSignatures.has(signature);
+      if (isPreExisting && !isFreshPostSubmit) {
         continue;
       }
 
       // 1. Check for Accepted result for THIS submission
       if (text === 'Accepted') {
+        PerformanceProfiler.mark('t2_acceptedDetected');
         const attempt = this.currentAttempt;
         const resultContainer = node.closest('div[class*="result"], div[class*="submission"], div.flex') || node.parentElement;
 

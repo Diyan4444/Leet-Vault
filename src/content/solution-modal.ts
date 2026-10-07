@@ -6,6 +6,7 @@ import {
 import { resolveLanguage } from '../leetcode/language-map';
 import { FilenameManager } from '../sync/filename-manager';
 import { escapeHtml } from '../utils/sanitize';
+import { PerformanceProfiler } from '../utils/profiler';
 
 export interface ModalCallbacks {
   onSave: (customName: string, overwriteSha?: string, forceAnyway?: boolean) => Promise<SyncResult>;
@@ -221,11 +222,13 @@ export class SolutionModal {
   }
 
   /**
-   * Renders direct success UI for automated background syncs
+   * Renders direct success notification for automated background syncs
    */
   renderDirectSuccess(result: SyncResult): void {
-    this.render();
-    this.showSuccess(result);
+    this.close();
+    if (result.success) {
+      SolutionModal.showToastNotification(result.filePath || result.fileName);
+    }
   }
 
   /**
@@ -342,6 +345,7 @@ export class SolutionModal {
   private async handleSave(forceAnyway = false): Promise<void> {
     if (this.isSaving || !this.container) return;
 
+    PerformanceProfiler.mark('t4_saveConfirmed');
     const input = this.container.querySelector('#lc-sol-name-input') as HTMLInputElement;
     const saveBtn = this.container.querySelector('#lc-save-btn') as HTMLButtonElement;
     const solName = input.value.trim();
@@ -357,7 +361,15 @@ export class SolutionModal {
     saveBtn.textContent = 'Save to GitHub';
 
     if (result.success) {
-      this.showSuccess(result);
+      PerformanceProfiler.mark('t15_successUiDone');
+      const profile = PerformanceProfiler.finalizeReport();
+      console.log('[LeetCode GitHub Sync] Performance Profile:', profile);
+
+      // Immediately close the pop-up modal so user never has to scroll or click cross!
+      this.close();
+
+      // Show non-blocking success toast
+      SolutionModal.showToastNotification(result.filePath || result.fileName);
     } else if (result.conflictType === 'DUPLICATE_NAME') {
       this.showNameConflict(solName, result.fileName);
     } else if (result.conflictType === 'DUPLICATE_CODE') {
@@ -456,58 +468,30 @@ export class SolutionModal {
     const safePath = escapeHtml(result.filePath || result.fileName);
 
     card.innerHTML = `
-      <div style="text-align: center; padding: 16px 0;">
-        <div style="display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; background: #dcfce7; color: #15803d; border-radius: 50%; font-size: 22px; margin-bottom: 12px;">
+      <div style="text-align: center; padding: 20px 16px;">
+        <div style="display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; background: #dcfce7; color: #15803d; border-radius: 50%; font-size: 22px; margin-bottom: 10px;">
           ✓
         </div>
         <h3 style="font-size: 17px; font-weight: 700; color: #0f172a; margin: 0 0 6px 0;">
-          Successfully pushed to GitHub
+          Saved to GitHub!
         </h3>
-        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin: 12px 0 16px 0; text-align: left; font-size: 13px;">
-          <div style="color: #64748b; font-size: 11px; text-transform: uppercase; font-weight: 600;">File Path</div>
-          <div style="font-family: monospace; color: #1e293b; word-break: break-all; margin-top: 2px;">
-            ${safePath}
-          </div>
+        <div style="font-family: monospace; font-size: 12px; color: #64748b; word-break: break-all; margin: 4px 0 10px 0;">
+          ${safePath}
         </div>
-        <div style="display: flex; justify-content: center; gap: 10px; align-items: center;">
-          ${
-            result.githubUrl
-              ? `<a href="${escapeHtml(result.githubUrl)}" target="_blank" rel="noreferrer" class="lc-btn lc-btn-primary" style="text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">
-                  View on GitHub ↗
-                 </a>`
-              : ''
-          }
-          <button id="lc-done-btn" class="lc-btn lc-btn-secondary">Done</button>
-        </div>
-        <div id="lc-autoclose-hint" style="font-size: 11px; color: #94a3b8; margin-top: 12px;">
-          Auto-closing in 5s...
+        <div style="font-size: 12px; color: #16a34a; font-weight: 500;">
+          Closing automatically...
         </div>
       </div>
     `;
 
-    const doneBtn = card.querySelector('#lc-done-btn') as HTMLButtonElement;
-    if (doneBtn) {
-      doneBtn.onclick = () => {
-        if (this.autoCloseTimer) clearTimeout(this.autoCloseTimer);
-        this.close();
-      };
-    }
+    PerformanceProfiler.mark('t15_successUiDone');
+    const profile = PerformanceProfiler.finalizeReport();
+    console.log('[LeetCode GitHub Sync] Performance Profile:', profile);
 
-    let remainingSeconds = 5;
-    const hintEl = card.querySelector('#lc-autoclose-hint') as HTMLElement;
-    const countdownInterval = setInterval(() => {
-      remainingSeconds--;
-      if (hintEl && remainingSeconds > 0) {
-        hintEl.textContent = `Auto-closing in ${remainingSeconds}s...`;
-      } else {
-        clearInterval(countdownInterval);
-      }
-    }, 1000);
-
+    // Automatically close after 1 second so the user never has to scroll to the cross button
     this.autoCloseTimer = setTimeout(() => {
-      clearInterval(countdownInterval);
       this.close();
-    }, 5000);
+    }, 1000);
   }
 
   private showError(msg: string): void {
@@ -541,5 +525,61 @@ export class SolutionModal {
       this.container.parentNode.removeChild(this.container);
       this.container = null;
     }
+  }
+
+  /**
+   * Displays a non-intrusive floating toast notification in top-right corner.
+   * Completely non-blocking and automatically fades out without requiring user clicks.
+   */
+  static showToastNotification(filePath: string): void {
+    if (typeof document === 'undefined') return;
+
+    const existingToast = document.getElementById('lc-sync-toast');
+    if (existingToast && existingToast.parentNode) {
+      existingToast.parentNode.removeChild(existingToast);
+    }
+
+    const toast = document.createElement('div');
+    toast.id = 'lc-sync-toast';
+    toast.setAttribute(
+      'style',
+      `
+      position: fixed;
+      top: 24px;
+      right: 24px;
+      z-index: 10000000;
+      background: #ffffff;
+      border: 1px solid #86efac;
+      border-left: 5px solid #22c55e;
+      border-radius: 8px;
+      padding: 12px 18px;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      pointer-events: none;
+      transition: opacity 0.3s ease, transform 0.3s ease;
+    `
+    );
+
+    const safeFile = escapeHtml(filePath);
+    toast.innerHTML = `
+      <div style="width: 28px; height: 28px; border-radius: 50%; background: #dcfce7; color: #16a34a; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: bold; flex-shrink: 0;">✓</div>
+      <div>
+        <div style="font-size: 13px; font-weight: 600; color: #0f172a;">Saved to GitHub!</div>
+        <div style="font-size: 11px; color: #64748b; font-family: monospace; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${safeFile}</div>
+      </div>
+    `;
+
+    document.body.appendChild(toast);
+
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      toast.style.transform = 'translateY(-10px)';
+      setTimeout(() => {
+        if (toast.parentNode) toast.parentNode.removeChild(toast);
+      }, 350);
+    }, 2500);
   }
 }

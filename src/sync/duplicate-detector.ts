@@ -29,32 +29,58 @@ export class DuplicateDetector {
       return !lower.startsWith('readme') && !lower.endsWith('.md');
     });
 
-    for (const file of codeFiles) {
-      try {
-        const fileData = await GitHubContentsService.getFileContent(
-          token,
-          owner,
-          repo,
-          file.path,
-          branch
-        );
+    if (codeFiles.length === 0) {
+      return { isDuplicate: false };
+    }
 
-        if (fileData) {
-          const existingHash = computeCodeHash(fileData.content);
-          if (existingHash === targetHash) {
-            // Double check by comparing normalized text directly
-            if (normalizeCodeForComparison(fileData.content) === normalizedNewCode) {
-              return {
-                isDuplicate: true,
-                matchingFile: file,
-                matchingFileName: file.name,
-              };
-            }
+    const codeLen = normalizedNewCode.length;
+
+    // Filter candidate files: if file.size is known and drastically different, it cannot be duplicate
+    const candidateFiles = codeFiles.filter((file) => {
+      if (file.size !== undefined && file.size > 0 && codeLen > 0) {
+        if (file.size > codeLen * 8 || file.size < Math.floor(codeLen / 8)) {
+          return false;
+        }
+      }
+      return true;
+    });
+
+    if (candidateFiles.length === 0) {
+      return { isDuplicate: false };
+    }
+
+    // Parallel fetch of all candidate files instead of serial loop
+    const fetchResults = await Promise.all(
+      candidateFiles.map(async (file) => {
+        try {
+          const fileData = await GitHubContentsService.getFileContent(
+            token,
+            owner,
+            repo,
+            file.path,
+            branch
+          );
+          return { file, fileData };
+        } catch (err) {
+          console.warn(`Could not fetch file ${file.name} for duplicate comparison:`, err);
+          return { file, fileData: null };
+        }
+      })
+    );
+
+    for (const { file, fileData } of fetchResults) {
+      if (fileData) {
+        const existingHash = computeCodeHash(fileData.content);
+        if (existingHash === targetHash) {
+          // Double check by comparing normalized text directly
+          if (normalizeCodeForComparison(fileData.content) === normalizedNewCode) {
+            return {
+              isDuplicate: true,
+              matchingFile: file,
+              matchingFileName: file.name,
+            };
           }
         }
-      } catch (err) {
-        // Log and continue checking other files
-        console.warn(`Could not fetch file ${file.name} for duplicate comparison:`, err);
       }
     }
 

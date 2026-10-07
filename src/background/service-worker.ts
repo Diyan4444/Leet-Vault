@@ -171,38 +171,16 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         }
 
         case MESSAGES.GET_STATUS: {
-          const settings = await StorageService.getSettings();
-          const user = await StorageService.getGitHubUser();
-          const history = await StorageService.getSyncHistory();
-          const pendingQueue = await StorageService.getPendingQueue();
-
-          // Authoritative connection check:
-          // Must have valid token AND authenticated user
-          const isConnected = !!(settings.githubToken && user && user.login);
-          const isRepoVerified = !!(isConnected && settings.repoConfig.owner && settings.repoConfig.repo && settings.repoConfig.verified);
+          const { connection, settings, user, pendingQueue, recentSolutions } =
+            await StorageService.getAuthoritativeStatus();
 
           sendResponse({
-            isConnected,
-            isRepoVerified,
+            isConnected: connection.connected,
+            isRepoVerified: connection.repositoryVerified,
             user,
             settings,
-            connectionState: {
-              connected: isConnected,
-              githubUsername: user?.login,
-              githubUserId: user?.id,
-              githubAvatarUrl: user?.avatarUrl,
-              repositoryOwner: settings.repoConfig.owner,
-              repositoryName: settings.repoConfig.repo,
-              repositoryUrl: settings.repoConfig.owner && settings.repoConfig.repo
-                ? `https://github.com/${settings.repoConfig.owner}/${settings.repoConfig.repo}`
-                : undefined,
-              repositoryVerified: isRepoVerified,
-              hasPushAccess: isRepoVerified,
-              selectedBranch: settings.repoConfig.branch || 'main',
-              verifiedAt: settings.repoConfig.verifiedAt,
-              lastVerifiedAt: settings.repoConfig.verifiedAt,
-            },
-            recentSolutions: history.slice(0, 5),
+            connectionState: connection,
+            recentSolutions: recentSolutions.slice(0, 5),
             pendingQueue,
           });
           break;

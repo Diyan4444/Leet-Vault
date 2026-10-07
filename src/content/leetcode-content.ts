@@ -3,6 +3,8 @@ import { LeetCodeSubmission, ProblemDirectoryState, SyncResult, ExtensionSetting
 import { MESSAGES } from '../shared/constants';
 import { SolutionModal } from './solution-modal';
 import { FilenameManager } from '../sync/filename-manager';
+import { PerformanceProfiler } from '../utils/profiler';
+import { LeetCodeProblemParser } from '../leetcode/problem-parser';
 
 class LeetCodeContentApp {
   private detector: SubmissionDetector;
@@ -28,6 +30,17 @@ class LeetCodeContentApp {
 
   private async handleAcceptedSubmission(submission: LeetCodeSubmission): Promise<void> {
     console.log('[LeetCode GitHub Sync] Accepted submission detected for:', submission.problem.title);
+
+    // Compulsory 2-second delay after checking solution is accepted before popping up modal
+    console.log('[LeetCode GitHub Sync] Solution accepted. Waiting compulsory 2-second timer before popping up...');
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+
+    // Check if user navigated away during the 2-second delay
+    const currentSlug = LeetCodeProblemParser.extractProblemSlug();
+    if (currentSlug && submission.problem.slug && currentSlug !== submission.problem.slug) {
+      console.log('[LeetCode GitHub Sync] User navigated away during 2-second timer; aborting popup.');
+      return;
+    }
 
     // 1. Authoritative check: Is GitHub connected and repository verified?
     const status = await new Promise<{
@@ -115,18 +128,20 @@ class LeetCodeContentApp {
               payload: {
                 submission,
                 customSolutionName: '',
+                cachedDirState: dirState,
               },
             },
             (res) => resolve(res?.result)
           );
         });
 
-        if (this.currentModal) this.currentModal.destroy();
-        this.currentModal = new SolutionModal(submission, dirState, {
-          onSave: async () => syncResult,
-          onClose: () => { this.currentModal = null; },
-        });
-        this.currentModal.renderDirectSuccess(syncResult);
+        if (this.currentModal) {
+          this.currentModal.destroy();
+          this.currentModal = null;
+        }
+        if (syncResult && syncResult.success) {
+          SolutionModal.showToastNotification(syncResult.filePath || syncResult.fileName);
+        }
         return;
       }
       // If a collision/duplicate exists, fall through to modal for user decision
@@ -137,6 +152,7 @@ class LeetCodeContentApp {
       this.currentModal.destroy();
     }
 
+    PerformanceProfiler.mark('t3_modalOpened');
     this.currentModal = new SolutionModal(submission, dirState, {
       onSave: async (customName, overwriteSha, forceAnyway) => {
         return await new Promise<SyncResult>((resolve) => {
@@ -148,6 +164,7 @@ class LeetCodeContentApp {
                 customSolutionName: customName,
                 overwriteSha,
                 forceSaveAnyway: forceAnyway,
+                cachedDirState: dirState,
               },
             },
             (response) => {

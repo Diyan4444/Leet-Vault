@@ -1,4 +1,4 @@
-import { ExtensionSettings, GitHubUser, SyncHistoryItem, PendingQueueItem } from './types';
+import { ExtensionSettings, GitHubUser, SyncHistoryItem, PendingQueueItem, ConnectionState } from './types';
 import { DEFAULT_SETTINGS, STORAGE_KEYS } from './constants';
 
 export class StorageService {
@@ -98,5 +98,58 @@ export class StorageService {
     if (typeof chrome !== 'undefined' && chrome.storage?.local) {
       await chrome.storage.local.set({ [STORAGE_KEYS.PENDING_QUEUE]: updated });
     }
+  }
+
+  /**
+   * Optimized batch reader: retrieves settings, authenticated user, and queue in a single storage read
+   */
+  static async getAuthoritativeStatus(): Promise<{
+    connection: ConnectionState;
+    settings: ExtensionSettings;
+    user: GitHubUser | null;
+    pendingQueue: PendingQueueItem[];
+    recentSolutions: SyncHistoryItem[];
+  }> {
+    if (typeof chrome === 'undefined' || !chrome.storage?.local) {
+      return {
+        connection: { connected: false, repositoryVerified: false, hasPushAccess: false },
+        settings: DEFAULT_SETTINGS,
+        user: null,
+        pendingQueue: [],
+        recentSolutions: [],
+      };
+    }
+
+    const res = await chrome.storage.local.get([
+      STORAGE_KEYS.SETTINGS,
+      STORAGE_KEYS.GITHUB_USER,
+      STORAGE_KEYS.PENDING_QUEUE,
+      STORAGE_KEYS.SYNC_HISTORY,
+    ]);
+
+    const settings: ExtensionSettings = { ...DEFAULT_SETTINGS, ...(res[STORAGE_KEYS.SETTINGS] || {}) };
+    const user: GitHubUser | null = res[STORAGE_KEYS.GITHUB_USER] || null;
+    const pendingQueue: PendingQueueItem[] = res[STORAGE_KEYS.PENDING_QUEUE] || [];
+    const recentSolutions: SyncHistoryItem[] = res[STORAGE_KEYS.SYNC_HISTORY] || [];
+
+    const isConnected = !!(settings.githubToken && user);
+    const repoCfg = settings.repoConfig;
+
+    const connection: ConnectionState = {
+      connected: isConnected,
+      githubUserId: user?.id,
+      githubUsername: user?.login,
+      githubAvatarUrl: user?.avatarUrl,
+      repositoryOwner: repoCfg.owner,
+      repositoryName: repoCfg.repo,
+      repositoryUrl: repoCfg.owner && repoCfg.repo ? `https://github.com/${repoCfg.owner}/${repoCfg.repo}` : '',
+      repositoryVerified: !!repoCfg.verified,
+      hasPushAccess: !!repoCfg.verified,
+      selectedBranch: repoCfg.branch || 'main',
+      verifiedAt: repoCfg.verifiedAt,
+      lastVerifiedAt: repoCfg.verifiedAt,
+    };
+
+    return { connection, settings, user, pendingQueue, recentSolutions };
   }
 }
