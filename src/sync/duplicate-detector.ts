@@ -49,36 +49,40 @@ export class DuplicateDetector {
       return { isDuplicate: false };
     }
 
-    // Parallel fetch of all candidate files instead of serial loop
-    const fetchResults = await Promise.all(
-      candidateFiles.map(async (file) => {
-        try {
-          const fileData = await GitHubContentsService.getFileContent(
-            token,
-            owner,
-            repo,
-            file.path,
-            branch
-          );
-          return { file, fileData };
-        } catch (err) {
-          console.warn(`Could not fetch file ${file.name} for duplicate comparison:`, err);
-          return { file, fileData: null };
-        }
-      })
-    );
+    // Bounded concurrency (chunks of 5) with early exit on duplicate match
+    const BATCH_SIZE = 5;
+    for (let i = 0; i < candidateFiles.length; i += BATCH_SIZE) {
+      const chunk = candidateFiles.slice(i, i + BATCH_SIZE);
+      const chunkResults = await Promise.all(
+        chunk.map(async (file) => {
+          try {
+            const fileData = await GitHubContentsService.getFileContent(
+              token,
+              owner,
+              repo,
+              file.path,
+              branch
+            );
+            return { file, fileData };
+          } catch (err) {
+            console.warn(`Could not fetch file ${file.name} for duplicate comparison:`, err);
+            return { file, fileData: null };
+          }
+        })
+      );
 
-    for (const { file, fileData } of fetchResults) {
-      if (fileData) {
-        const existingHash = computeCodeHash(fileData.content);
-        if (existingHash === targetHash) {
-          // Double check by comparing normalized text directly
-          if (normalizeCodeForComparison(fileData.content) === normalizedNewCode) {
-            return {
-              isDuplicate: true,
-              matchingFile: file,
-              matchingFileName: file.name,
-            };
+      for (const { file, fileData } of chunkResults) {
+        if (fileData) {
+          const existingHash = computeCodeHash(fileData.content);
+          if (existingHash === targetHash) {
+            // Double check by comparing normalized text directly
+            if (normalizeCodeForComparison(fileData.content) === normalizedNewCode) {
+              return {
+                isDuplicate: true,
+                matchingFile: file,
+                matchingFileName: file.name,
+              };
+            }
           }
         }
       }

@@ -116,7 +116,24 @@ export class LeetCodeParser {
       }
     }
 
-    // Strategy 5: CodeMirror lines
+    // Strategy 5: CodeMirror 6 (used in modern LeetCode dynamic layout)
+    const cm6Content = document.querySelector('.cm-content') as HTMLElement | null;
+    if (cm6Content) {
+      const cm6Lines = cm6Content.querySelectorAll('.cm-line');
+      if (cm6Lines.length > 0) {
+        const codeLines = Array.from(cm6Lines).map((line) => line.textContent || '');
+        const code = codeLines.join('\n');
+        if (code.trim().length > 0) {
+          return code;
+        }
+      }
+      const rawText = cm6Content.innerText || cm6Content.textContent;
+      if (rawText && rawText.trim().length > 0) {
+        return rawText;
+      }
+    }
+
+    // Strategy 6: Legacy CodeMirror 5 lines
     const cmLines = document.querySelectorAll('.CodeMirror-code .CodeMirror-line');
     if (cmLines.length > 0) {
       const codeLines: string[] = [];
@@ -126,6 +143,26 @@ export class LeetCodeParser {
       const code = codeLines.join('\n');
       if (code.trim().length > 0) {
         return code;
+      }
+    }
+
+    // Strategy 7: Search localStorage for cached LeetCode editor content
+    if (typeof localStorage !== 'undefined') {
+      try {
+        const slug = LeetCodeProblemParser.extractProblemSlug();
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && (key.includes('code') || (slug && key.includes(slug)))) {
+            const val = localStorage.getItem(key);
+            if (val && typeof val === 'string' && val.trim().length > 0) {
+              if (val.includes('class Solution') || val.includes('function') || val.includes('#include') || val.includes('def ')) {
+                return val;
+              }
+            }
+          }
+        }
+      } catch {
+        // Safe fallback
       }
     }
 

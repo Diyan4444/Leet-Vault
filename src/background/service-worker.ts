@@ -7,18 +7,140 @@ import { DuplicateDetector } from '../sync/duplicate-detector';
 import { SyncRequest } from '../shared/types';
 
 // Handle Extension Lifecycle
-chrome.runtime.onInstalled.addListener(async (details) => {
-  console.log('[LeetCode GitHub Sync] Extension installed/updated:', details.reason);
-  const settings = await StorageService.getSettings();
-  await StorageService.saveSettings(settings);
-});
+if (typeof chrome !== 'undefined' && chrome.runtime?.onInstalled) {
+  chrome.runtime.onInstalled.addListener(async (details) => {
+    console.log('[LeetCode GitHub Sync] Extension installed/updated:', details.reason);
+    const settings = await StorageService.getSettings();
+    await StorageService.saveSettings(settings);
+
+    if (chrome.alarms) {
+      chrome.alarms.create('AUTO_RETRY_PENDING_QUEUE', {
+        periodInMinutes: 5,
+      });
+    }
+  });
+}
+
+if (typeof chrome !== 'undefined' && chrome.runtime?.onStartup) {
+  chrome.runtime.onStartup.addListener(async () => {
+    if (chrome.alarms) {
+      chrome.alarms.create('AUTO_RETRY_PENDING_QUEUE', {
+        periodInMinutes: 5,
+      });
+    }
+    try {
+      await SyncManager.processPendingQueueAutoRetry(5);
+    } catch (err) {
+      console.warn('[Service Worker] Startup auto-retry error:', err);
+    }
+  });
+}
+
+if (typeof chrome !== 'undefined' && chrome.alarms) {
+  chrome.alarms.onAlarm.addListener(async (alarm) => {
+    if (alarm.name === 'AUTO_RETRY_PENDING_QUEUE') {
+      try {
+        const result = await SyncManager.processPendingQueueAutoRetry(5);
+        if (result.processed > 0) {
+          console.log('[Service Worker] Auto-retry completed:', result);
+        }
+      } catch (err) {
+        console.warn('[Service Worker] Auto-retry alarm error:', err);
+      }
+    }
+  });
+}
+
+export function validatePayload(type: string, payload: any): string | null {
+  const isParameterless =
+    type === MESSAGES.START_OAUTH_FLOW ||
+    type === MESSAGES.GET_SETTINGS ||
+    type === MESSAGES.OPEN_OPTIONS_PAGE ||
+    type === 'OPEN_OPTIONS_PAGE' ||
+    type === MESSAGES.GET_STATUS ||
+    type === MESSAGES.FETCH_REPOSITORIES ||
+    type === MESSAGES.DISCONNECT_GITHUB ||
+    type === MESSAGES.GET_PENDING_QUEUE;
+
+  if (!payload && !isParameterless) {
+    return 'Missing message payload';
+  }
+  switch (type) {
+    case MESSAGES.GET_DIRECTORY_STATE:
+      if (!payload || typeof payload.problemId !== 'string' || typeof payload.problemSlug !== 'string') {
+        return 'Invalid payload for GET_DIRECTORY_STATE: problemId and problemSlug must be strings';
+      }
+      break;
+    case MESSAGES.CHECK_DUPLICATE_CODE:
+      if (!payload || typeof payload.code !== 'string' || !Array.isArray(payload.files)) {
+        return 'Invalid payload for CHECK_DUPLICATE_CODE: code must be string and files must be an array';
+      }
+      break;
+    case MESSAGES.SYNC_SOLUTION:
+      if (!payload?.submission?.code || !payload?.submission?.problem?.id || !payload?.submission?.language) {
+        return 'Invalid payload for SYNC_SOLUTION: submission with code, problem.id, and language required';
+      }
+      break;
+    case MESSAGES.FETCH_BRANCHES:
+    case MESSAGES.VERIFY_AND_LINK_REPOSITORY:
+      if (!payload || typeof payload.owner !== 'string' || typeof payload.repo !== 'string') {
+        return `Invalid payload for ${type}: owner and repo must be strings`;
+      }
+      break;
+    case MESSAGES.RETRY_QUEUE_ITEM:
+    case MESSAGES.CLEAR_QUEUE_ITEM:
+      if (!payload || typeof payload.id !== 'string') {
+        return `Invalid payload for ${type}: id must be a string`;
+      }
+      break;
+    case MESSAGES.VALIDATE_GITHUB_TOKEN:
+      if (!payload || typeof payload.token !== 'string') {
+        return 'Invalid payload for VALIDATE_GITHUB_TOKEN: token must be a string';
+      }
+      break;
+    case MESSAGES.SAVE_SETTINGS:
+      if (!payload) {
+        return 'Invalid payload for SAVE_SETTINGS: settings payload required';
+      }
+      break;
+  }
+  return null;
+}
 
 // Centralized message dispatcher in Service Worker
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
+  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   // Use async self-invoking function and return true to keep message channel alive
   (async () => {
     try {
+      const validationError = validatePayload(message.type, message.payload);
+      if (validationError) {
+        sendResponse({ error: validationError });
+        return;
+      }
+
       switch (message.type) {
+        case MESSAGES.OPEN_OPTIONS_PAGE:
+        case 'OPEN_OPTIONS_PAGE': {
+          if (chrome.runtime.openOptionsPage) {
+            chrome.runtime.openOptionsPage();
+          }
+          sendResponse({ success: true });
+          break;
+        }
+
+        case MESSAGES.GET_SETTINGS: {
+          const settings = await StorageService.getSettings();
+          sendResponse({ settings });
+          break;
+        }
+
+        case MESSAGES.SAVE_SETTINGS: {
+          const updated = await StorageService.saveSettings(message.payload?.settings || message.payload || {});
+          sendResponse({ success: true, settings: updated });
+          break;
+        }
+
         case MESSAGES.GET_DIRECTORY_STATE: {
           const { problemId, problemSlug } = message.payload;
           const state = await SyncManager.getProblemDirectoryState(problemId, problemSlug);
@@ -216,4 +338,5 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   })();
 
   return true; // Keep message channel open for async response
-});
+  });
+}

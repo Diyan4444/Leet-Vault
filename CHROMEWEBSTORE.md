@@ -38,7 +38,9 @@ WORKFLOW:
 
 | Permission / Host | Plain-English Reason for Chrome Reviewers |
 |---|---|
-| `storage` | Required to save the user's selected repository, branch, preferences, and personal access token locally on their machine. |
+| `storage` | Required to save the user's selected repository, branch, preferences, and GitHub authentication state locally on their machine. |
+| `identity` | Required to launch the GitHub OAuth consent flow securely via `chrome.identity.launchWebAuthFlow`. |
+| `alarms` | Required for the background service worker to periodically retry syncing pending solutions that experienced temporary network failures. |
 | `https://leetcode.com/*` | Required to detect accepted submissions on LeetCode problem pages and display the solution-saving modal. |
 | `https://api.github.com/*` | Required to communicate with the GitHub REST API to list user repositories, check existing files, and commit solution files. |
 

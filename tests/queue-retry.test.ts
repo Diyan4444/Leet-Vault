@@ -258,4 +258,36 @@ describe('Pending Sync Queue and Retry Actions', () => {
     const queue = await StorageService.getPendingQueue();
     expect(queue.length).toBe(0);
   });
+
+  it('processPendingQueueAutoRetry respects exponential backoff and skips items too recent', async () => {
+    // Item created just 1 second ago with retryCount 1 (needs at least 120s backoff)
+    const recentItem: PendingQueueItem = {
+      id: 'recent_1',
+      createdAt: Date.now() - 1000,
+      lastAttemptAt: Date.now() - 1000,
+      request: mockRequest,
+      retryCount: 1,
+    };
+    mockStorage[STORAGE_KEYS.PENDING_QUEUE] = [recentItem];
+
+    const result = await SyncManager.processPendingQueueAutoRetry(5);
+    expect(result.skipped).toBe(1);
+    expect(result.processed).toBe(0);
+  });
+
+  it('processPendingQueueAutoRetry skips items that reached maxRetries', async () => {
+    const deadLetterItem: PendingQueueItem = {
+      id: 'dead_1',
+      createdAt: Date.now() - 1000000,
+      lastAttemptAt: Date.now() - 500000,
+      request: mockRequest,
+      retryCount: 5,
+    };
+    mockStorage[STORAGE_KEYS.PENDING_QUEUE] = [deadLetterItem];
+
+    const result = await SyncManager.processPendingQueueAutoRetry(5);
+    expect(result.skipped).toBe(1);
+    expect(result.processed).toBe(0);
+  });
 });
+

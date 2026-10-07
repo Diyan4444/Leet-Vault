@@ -31,17 +31,6 @@ class LeetCodeContentApp {
   private async handleAcceptedSubmission(submission: LeetCodeSubmission): Promise<void> {
     console.log('[LeetCode GitHub Sync] Accepted submission detected for:', submission.problem.title);
 
-    // Compulsory 2-second delay after checking solution is accepted before popping up modal
-    console.log('[LeetCode GitHub Sync] Solution accepted. Waiting compulsory 2-second timer before popping up...');
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-
-    // Check if user navigated away during the 2-second delay
-    const currentSlug = LeetCodeProblemParser.extractProblemSlug();
-    if (currentSlug && submission.problem.slug && currentSlug !== submission.problem.slug) {
-      console.log('[LeetCode GitHub Sync] User navigated away during 2-second timer; aborting popup.');
-      return;
-    }
-
     // 1. Authoritative check: Is GitHub connected and repository verified?
     const status = await new Promise<{
       isConnected: boolean;
@@ -64,7 +53,7 @@ class LeetCodeContentApp {
         onClose: () => { this.currentModal = null; },
       });
       this.currentModal.renderConnectPrompt(() => {
-        chrome.runtime.sendMessage({ type: 'OPEN_OPTIONS_PAGE' });
+        chrome.runtime.sendMessage({ type: MESSAGES.OPEN_OPTIONS_PAGE });
       });
       return;
     }

@@ -21,7 +21,15 @@ export class GitHubOAuthClient {
     const settings = await StorageService.getSettings();
     const brokerUrl = (customBrokerUrl || settings.oauthBrokerUrl || this.DEFAULT_BROKER_URL).replace(/\/+$/, '');
     const redirectUri = chrome.identity.getRedirectURL(); // e.g. https://<ext-id>.chromiumapp.org/
-    const state = Math.random().toString(36).substring(2);
+
+    // Generate cryptographically secure random state nonce for CSRF validation
+    const stateArray = new Uint8Array(16);
+    if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+      crypto.getRandomValues(stateArray);
+    } else {
+      for (let i = 0; i < 16; i++) stateArray[i] = Math.floor(Math.random() * 256);
+    }
+    const state = Array.from(stateArray, (byte) => byte.toString(16).padStart(2, '0')).join('');
 
     const loginUrl = `${brokerUrl}/login?redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`;
 
@@ -39,16 +47,59 @@ export class GitHubOAuthClient {
           }
 
           try {
-            const token = this.extractTokenFromUrl(redirectResultUrl);
-            if (!token) {
-              let errorParam = 'No access token received from GitHub authorization.';
-              try {
-                const urlObj = new URL(redirectResultUrl);
-                errorParam = urlObj.searchParams.get('error') || errorParam;
-              } catch {
-                // Ignore url parse error
-              }
+            let urlObj: URL | null = null;
+            try {
+              urlObj = new URL(redirectResultUrl);
+            } catch {
+              // ignore parse error
+            }
+
+            const returnedState = urlObj?.searchParams.get('state');
+            const errorParam = urlObj?.searchParams.get('error');
+
+            if (errorParam) {
               resolve({ success: false, error: errorParam });
+              return;
+            }
+
+            // CRITICAL: Strict CSRF State Validation
+            if (returnedState && returnedState !== state) {
+              resolve({
+                success: false,
+                error: 'OAuth security verification failed: State nonce mismatch. Possible CSRF interception.',
+              });
+              return;
+            }
+
+            let token: string | null = null;
+            const oneTimeCode = urlObj?.searchParams.get('code');
+
+            if (oneTimeCode) {
+              // Secure POST exchange for token using one-time opaque code
+              const tokenResponse = await fetch(`${brokerUrl}/api/token`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code: oneTimeCode }),
+              });
+
+              if (tokenResponse.ok) {
+                const tokenJson = await tokenResponse.json();
+                token = tokenJson.access_token;
+              } else {
+                const errData = await tokenResponse.json().catch(() => ({}));
+                resolve({
+                  success: false,
+                  error: errData.error || 'Failed to exchange one-time OAuth code for access token.',
+                });
+                return;
+              }
+            } else {
+              // Backward compatibility fallback for legacy brokers
+              token = this.extractTokenFromUrl(redirectResultUrl);
+            }
+
+            if (!token) {
+              resolve({ success: false, error: 'No access token received from GitHub authorization.' });
               return;
             }
 

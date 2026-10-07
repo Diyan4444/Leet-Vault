@@ -88,6 +88,9 @@ export interface SyncResult {
   commitSha?: string;
   githubUrl?: string;
   error?: string;
+  warning?: string;
+  problemReadmeUpdated?: boolean;
+  rootReadmeUpdated?: boolean;
   conflictType?: 'DUPLICATE_NAME' | 'DUPLICATE_CODE' | 'GITHUB_ERROR';
   existingSolutionName?: string;
   queuedForRetry?: boolean;

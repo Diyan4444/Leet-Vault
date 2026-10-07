@@ -123,3 +123,20 @@ export function escapeHtml(str: string): string {
     .replace(/'/g, '&#39;');
 }
 
+/**
+ * Sanitizes and validates repository root folder path against path traversal.
+ * Ensures strict relative-path policy: no .., no empty components, no leading/trailing slashes.
+ */
+export function sanitizeRootFolder(folder?: string): string {
+  if (!folder || typeof folder !== 'string') return '';
+  const trimmed = folder.trim();
+  if (trimmed === '' || trimmed === '/') return '';
+
+  return trimmed
+    .replace(/\\/g, '/')
+    .split('/')
+    .filter((part) => part.length > 0 && part !== '.' && part !== '..')
+    .map((part) => part.replace(/[^a-zA-Z0-9_\-.]/g, ''))
+    .filter((part) => part.length > 0)
+    .join('/');
+}

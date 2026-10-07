@@ -4,6 +4,7 @@ import {
   buildSolutionFilename,
   formatProblemFolderName,
   parseGitHubRepoUrl,
+  sanitizeRootFolder,
 } from '../src/utils/sanitize';
 
 describe('Filename and Problem Sanitization', () => {
@@ -53,5 +54,15 @@ describe('Filename and Problem Sanitization', () => {
     });
     expect(parseGitHubRepoUrl('invalid-url-without-slash')).toBeNull();
     expect(parseGitHubRepoUrl('https://malicious.com/user/repo')).toBeNull();
+  });
+
+  it('validates and sanitizes rootFolder preventing path traversal', () => {
+    expect(sanitizeRootFolder('leetcode')).toBe('leetcode');
+    expect(sanitizeRootFolder('/leetcode/')).toBe('leetcode');
+    expect(sanitizeRootFolder('src/solutions')).toBe('src/solutions');
+    expect(sanitizeRootFolder('../../../etc/passwd')).toBe('etc/passwd');
+    expect(sanitizeRootFolder('..\\..\\malicious')).toBe('malicious');
+    expect(sanitizeRootFolder('')).toBe('');
+    expect(sanitizeRootFolder('/')).toBe('');
   });
 });
