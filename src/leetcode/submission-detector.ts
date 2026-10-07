@@ -161,15 +161,11 @@ export class SubmissionDetector {
     try {
       const sourceSnapshot = await LeetCodeParser.captureSourceSnapshot();
       PerformanceProfiler.mark('t1_sourceCaptured');
-      if (!sourceSnapshot || sourceSnapshot.trim().length === 0) {
-        console.warn('[LeetCode Sync] Empty source code captured; aborting submission tracking.');
-        this.state = SubmissionState.IDLE;
-        return;
-      }
+      const safeSnapshot = sourceSnapshot && sourceSnapshot.trim().length > 0 ? sourceSnapshot : '';
 
       const problem = LeetCodeProblemParser.extractProblemDetails();
       const language = LeetCodeParser.extractLanguage();
-      const codeHash = computeCodeHash(sourceSnapshot);
+      const codeHash = computeCodeHash(safeSnapshot);
       const submittedAt = Date.now();
 
       // Snapshot any existing result badges on the page to ignore stale Accepted cards
@@ -180,7 +176,7 @@ export class SubmissionDetector {
         problemId: problem?.id || '0000',
         problemSlug: problem?.slug || '',
         language,
-        sourceSnapshot,
+        sourceSnapshot: safeSnapshot,
         sourceHash: codeHash,
         submittedAt,
         initialResultSignatures,
@@ -257,8 +253,6 @@ export class SubmissionDetector {
       'span[data-e2e-locator="submission-result"], div[data-e2e-locator="submission-result"], div[data-cy="submission-result"], span[class*="text-green"], div[class*="text-green"], span[class*="text-sd-green"], div[class*="text-sd-green"], span[class*="text-red"], div[class*="text-red"], [class*="status-column"]'
     );
 
-    const isFreshPostSubmit = this.hasSeenJudging || timeSinceSubmit >= 800;
-
     for (const node of Array.from(candidateNodes)) {
       const text = (node.textContent || '').trim();
       if (!text) continue;
@@ -269,11 +263,11 @@ export class SubmissionDetector {
       }
 
       // Check if signature existed before submit click.
-      // If we observed judging OR >800ms have passed (LeetCode judging duration),
-      // treat the result as fresh even if layout coordinates matched earlier runs.
+      // Pre-existing elements are only considered fresh if we observed an active
+      // state transition through Pending/Judging. Stale results are never accepted purely by elapsed time!
       const signature = this.getNodeSignature(node as HTMLElement);
       const isPreExisting = this.currentAttempt.initialResultSignatures.has(signature);
-      if (isPreExisting && !isFreshPostSubmit) {
+      if (isPreExisting && !this.hasSeenJudging) {
         continue;
       }
 

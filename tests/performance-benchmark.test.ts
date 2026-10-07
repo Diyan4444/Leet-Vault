@@ -15,7 +15,11 @@ import { DuplicateDetector } from '../src/sync/duplicate-detector';
   },
 };
 
-describe('Performance Benchmark & Latency Profiling', () => {
+/**
+ * Synthetic performance benchmark testing in-memory algorithms,
+ * parallelization, and mocked API overhead.
+ */
+describe('Synthetic Performance Benchmark & Latency Profiling (Mock Environment)', () => {
   let mockStorage: Record<string, any> = {};
   const originalFetch = global.fetch;
 

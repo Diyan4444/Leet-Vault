@@ -13,7 +13,7 @@ import { resolveLanguage } from '../leetcode/language-map';
 import { FilenameManager } from './filename-manager';
 import { DuplicateDetector } from './duplicate-detector';
 import { ReadmeGenerator, SolutionRowData } from './readme-generator';
-import { formatProblemFolderName } from '../utils/sanitize';
+import { formatProblemFolderName, sanitizeRootFolder } from '../utils/sanitize';
 import { STORAGE_KEYS } from '../shared/constants';
 import { PerformanceProfiler } from '../utils/profiler';
 
@@ -29,10 +29,9 @@ export class SyncManager {
     const token = settings.githubToken;
     const { owner, repo, branch, rootFolder } = settings.repoConfig;
 
+    const sanitizedRoot = sanitizeRootFolder(rootFolder);
     const folderName = formatProblemFolderName(problemId, problemSlug);
-    const folderPath = rootFolder && rootFolder !== '/'
-      ? `${rootFolder.replace(/^\/+|\/+$/g, '')}/${folderName}`
-      : folderName;
+    const folderPath = sanitizedRoot ? `${sanitizedRoot}/${folderName}` : folderName;
 
     if (!token || !owner || !repo) {
       return {
@@ -259,7 +258,11 @@ export class SyncManager {
       if (solutionCount < 1) solutionCount = 1;
 
       // 6. Update Problem & Root READMEs in parallel for maximum speed
-      const readmeTasks: Promise<any>[] = [];
+      let problemReadmeUpdated: boolean | undefined = undefined;
+      let rootReadmeUpdated: boolean | undefined = undefined;
+      const readmeWarnings: string[] = [];
+
+      const readmeTasks: Promise<void>[] = [];
       if (settings.generateProblemReadme) {
         readmeTasks.push(
           this.syncProblemReadme(
@@ -272,6 +275,13 @@ export class SyncManager {
             fileName,
             solutionName
           )
+            .then(() => {
+              problemReadmeUpdated = true;
+            })
+            .catch((err) => {
+              problemReadmeUpdated = false;
+              readmeWarnings.push(`Problem README update failed: ${(err as Error).message || err}`);
+            })
         );
       }
 
@@ -286,11 +296,18 @@ export class SyncManager {
             dirState.folderName,
             solutionCount
           )
+            .then(() => {
+              rootReadmeUpdated = true;
+            })
+            .catch((err) => {
+              rootReadmeUpdated = false;
+              readmeWarnings.push(`Root README update failed: ${(err as Error).message || err}`);
+            })
         );
       }
 
       if (readmeTasks.length > 0) {
-        await Promise.allSettled(readmeTasks);
+        await Promise.all(readmeTasks);
       }
 
       PerformanceProfiler.mark('t12_problemReadmeDone');
@@ -318,6 +335,9 @@ export class SyncManager {
         filePath: fullFilePath,
         commitSha: commitRes.commit.sha,
         githubUrl: githubFileUrl,
+        problemReadmeUpdated,
+        rootReadmeUpdated,
+        warning: readmeWarnings.length > 0 ? readmeWarnings.join('; ') : undefined,
       };
     } catch (err: unknown) {
       console.error('GitHub file upload error:', err);
@@ -455,6 +475,7 @@ export class SyncManager {
       );
     } catch (readmeErr) {
       console.warn('Failed to update problem README (non-fatal):', readmeErr);
+      throw readmeErr;
     }
   }
 
@@ -526,6 +547,7 @@ export class SyncManager {
       );
     } catch (rootErr) {
       console.warn('Failed to update root README (non-fatal):', rootErr);
+      throw rootErr;
     }
   }
 
@@ -564,5 +586,79 @@ export class SyncManager {
       }
     }
     return result;
+  }
+
+  /**
+   * Automatically processes queued pending items with exponential backoff and max retry limit.
+   * Can be triggered by background alarms or extension startup.
+   */
+  static async processPendingQueueAutoRetry(maxRetries: number = 5): Promise<{
+    processed: number;
+    succeeded: number;
+    failed: number;
+    skipped: number;
+  }> {
+    const queue = await StorageService.getPendingQueue();
+    if (queue.length === 0) {
+      return { processed: 0, succeeded: 0, failed: 0, skipped: 0 };
+    }
+
+    let processed = 0;
+    let succeeded = 0;
+    let failed = 0;
+    let skipped = 0;
+
+    const updatedQueue = [...queue];
+
+    for (let i = 0; i < updatedQueue.length; i++) {
+      const item = updatedQueue[i];
+
+      // Dead-letter check: max retries reached
+      if (item.retryCount >= maxRetries) {
+        skipped++;
+        continue;
+      }
+
+      // Exponential backoff check: base delay 60s * 2^retryCount, capped at 1 hour
+      const backoffDelayMs = Math.min(60 * 1000 * Math.pow(2, item.retryCount), 60 * 60 * 1000);
+      const lastAttempt = item.lastAttemptAt || item.createdAt;
+      const now = Date.now();
+
+      if (now - lastAttempt < backoffDelayMs) {
+        // Not ready yet according to backoff policy
+        skipped++;
+        continue;
+      }
+
+      processed++;
+      try {
+        const result = await this.syncSolution(item.request);
+        if (result.success) {
+          succeeded++;
+          // Remove from persistent queue
+          await StorageService.removePendingItem(item.id);
+          // Remove from local list so it's not saved back
+          updatedQueue.splice(i, 1);
+          i--;
+        } else {
+          failed++;
+          item.retryCount += 1;
+          item.lastAttemptAt = Date.now();
+          item.error = result.error || 'Retry failed';
+        }
+      } catch (err: unknown) {
+        failed++;
+        item.retryCount += 1;
+        item.lastAttemptAt = Date.now();
+        item.error = (err as Error).message || 'Retry failed';
+      }
+    }
+
+    // Persist any updated queue states
+    if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+      await chrome.storage.local.set({ [STORAGE_KEYS.PENDING_QUEUE]: updatedQueue });
+    }
+
+    return { processed, succeeded, failed, skipped };
   }
 }

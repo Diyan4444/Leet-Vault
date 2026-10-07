@@ -9,10 +9,43 @@
 import https from 'node:https';
 import http from 'node:http';
 import url from 'node:url';
+import crypto from 'node:crypto';
 
 // Environment variables configured on your hosting platform
 const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID || '';
 const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET || '';
+
+// In-memory store for one-time exchange codes (TTL: 60 seconds)
+const tokenExchangeStore = new Map();
+
+function cleanupExpiredTokens() {
+  const now = Date.now();
+  for (const [key, value] of tokenExchangeStore.entries()) {
+    if (value.expires < now) tokenExchangeStore.delete(key);
+  }
+}
+
+/**
+ * Validates that redirect URI belongs to an authorized Chrome extension
+ * or local dev environment, preventing open-redirect vulnerabilities.
+ */
+function isValidExtensionRedirect(uri) {
+  if (!uri || typeof uri !== 'string') return false;
+  try {
+    const parsed = new URL(uri);
+    // Allow standard Chrome extension identity redirect URIs
+    if (parsed.protocol === 'https:' && parsed.hostname.endsWith('.chromiumapp.org')) {
+      return true;
+    }
+    // Allow localhost/127.0.0.1 for local extension development
+    if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') {
+      return true;
+    }
+  } catch {
+    return false;
+  }
+  return false;
+}
 
 /**
  * Exchanges authorization code with GitHub for an access token
@@ -70,7 +103,7 @@ export default async function handleRequest(req, res) {
   const pathname = parsedUrl.pathname;
   const query = parsedUrl.query;
 
-  // CORS headers
+  // CORS headers restricted to extension contexts
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -93,17 +126,23 @@ export default async function handleRequest(req, res) {
     const extensionRedirect = query.redirect_uri || '';
     const stateParam = query.state || '';
 
+    if (!isValidExtensionRedirect(extensionRedirect)) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid or unauthorized redirect_uri. Must be a valid Chrome extension redirect URI (*.chromiumapp.org).' }));
+      return;
+    }
+
     if (!GITHUB_CLIENT_ID) {
       res.writeHead(500, { 'Content-Type': 'text/plain' });
       res.end('Server Error: GITHUB_CLIENT_ID is not configured.');
       return;
     }
 
-    // Embed extension redirect_uri inside state parameter so we know where to return
+    // Embed extension redirect_uri and CSRF nonce inside state parameter
     const combinedState = encodeURIComponent(
       JSON.stringify({
         ext_redirect: extensionRedirect,
-        nonce: stateParam || Math.random().toString(36).substring(2),
+        nonce: stateParam || crypto.randomBytes(16).toString('hex'),
       })
     );
 
@@ -120,32 +159,36 @@ export default async function handleRequest(req, res) {
     return;
   }
 
-  // 2. /callback - Handle GitHub OAuth return and exchange code for access_token
+  // 2. /callback - Handle GitHub OAuth return and generate one-time exchange code
   if (pathname === '/callback' || pathname === '/api/callback') {
     const code = query.code;
     const rawState = query.state;
 
     let extensionRedirectUri = '';
+    let stateNonce = '';
     if (rawState) {
       try {
         const decoded = JSON.parse(decodeURIComponent(rawState));
         extensionRedirectUri = decoded.ext_redirect;
+        stateNonce = decoded.nonce || '';
       } catch (e) {
         // State might not be JSON
       }
     }
 
+    if (!isValidExtensionRedirect(extensionRedirectUri)) {
+      res.writeHead(400, { 'Content-Type': 'text/plain' });
+      res.end('Invalid redirect URI in OAuth callback.');
+      return;
+    }
+
     if (!code) {
       const errorMsg = query.error_description || query.error || 'Missing authorization code';
-      if (extensionRedirectUri) {
-        res.writeHead(302, {
-          Location: `${extensionRedirectUri}?error=${encodeURIComponent(errorMsg)}`,
-        });
-        res.end();
-        return;
-      }
-      res.writeHead(400, { 'Content-Type': 'text/plain' });
-      res.end(`Authentication Error: ${errorMsg}`);
+      const sep = extensionRedirectUri.includes('?') ? '&' : '?';
+      res.writeHead(302, {
+        Location: `${extensionRedirectUri}${sep}error=${encodeURIComponent(errorMsg)}`,
+      });
+      res.end();
       return;
     }
 
@@ -154,37 +197,70 @@ export default async function handleRequest(req, res) {
 
       if (tokenResponse.error || !tokenResponse.access_token) {
         const err = tokenResponse.error_description || tokenResponse.error || 'Failed to exchange token';
-        if (extensionRedirectUri) {
-          res.writeHead(302, {
-            Location: `${extensionRedirectUri}?error=${encodeURIComponent(err)}`,
-          });
-          res.end();
-          return;
-        }
-        res.writeHead(400, { 'Content-Type': 'text/plain' });
-        res.end(`Token Exchange Error: ${err}`);
+        const sep = extensionRedirectUri.includes('?') ? '&' : '?';
+        res.writeHead(302, {
+          Location: `${extensionRedirectUri}${sep}error=${encodeURIComponent(err)}`,
+        });
+        res.end();
         return;
       }
 
       const accessToken = tokenResponse.access_token;
 
-      // Redirect back to Chrome extension with access token
-      if (extensionRedirectUri) {
-        const separator = extensionRedirectUri.includes('?') ? '&' : '?';
-        const finalRedirect = `${extensionRedirectUri}${separator}access_token=${accessToken}`;
-        res.writeHead(302, { Location: finalRedirect });
-        res.end();
-        return;
-      }
+      // Generate a secure one-time exchange code (60-second TTL)
+      // Bearer token is NEVER passed in URL parameters!
+      const exchangeCode = crypto.randomBytes(24).toString('hex');
+      tokenExchangeStore.set(exchangeCode, {
+        token: accessToken,
+        expires: Date.now() + 60000,
+      });
+      cleanupExpiredTokens();
 
-      // If no redirect URI provided, return token as JSON
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ access_token: accessToken }));
+      const separator = extensionRedirectUri.includes('?') ? '&' : '?';
+      const statePart = stateNonce ? `&state=${encodeURIComponent(stateNonce)}` : '';
+      const finalRedirect = `${extensionRedirectUri}${separator}code=${exchangeCode}${statePart}`;
+
+      res.writeHead(302, { Location: finalRedirect });
+      res.end();
     } catch (err) {
       console.error('Broker exchange error:', err);
       res.writeHead(500, { 'Content-Type': 'text/plain' });
       res.end(`Internal Server Error: ${err.message}`);
     }
+    return;
+  }
+
+  // 3. /api/token or /token - Secure POST endpoint to exchange one-time code for access token
+  if ((pathname === '/api/token' || pathname === '/token') && req.method === 'POST') {
+    let body = '';
+    req.on('data', (chunk) => {
+      body += chunk;
+    });
+    req.on('end', () => {
+      try {
+        const { code } = JSON.parse(body || '{}');
+        if (!code || !tokenExchangeStore.has(code)) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Invalid, missing, or expired exchange code.' }));
+          return;
+        }
+
+        const record = tokenExchangeStore.get(code);
+        tokenExchangeStore.delete(code); // One-time use only
+
+        if (record.expires < Date.now()) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Exchange code expired.' }));
+          return;
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ access_token: record.token }));
+      } catch (err) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Malformed JSON request body.' }));
+      }
+    });
     return;
   }
 

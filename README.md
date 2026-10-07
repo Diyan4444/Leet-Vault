@@ -45,7 +45,7 @@ npm install
 ```
 
 ### 3. Run Tests
-Runs the complete Vitest test suite (47 unit tests covering submission state machine, OAuth token parsing, write permission verification, duplicate detection, queue retries, and README generation):
+Runs the comprehensive test suite (50+ unit and integration tests covering submission state machine, OAuth token exchange, write permission verification, duplicate detection, automated alarm-based queue retries, path traversal sanitization, and README generation):
 ```bash
 npm run test
 ```

@@ -10,6 +10,11 @@ export interface SolutionRowData {
   memory?: string;
 }
 
+function escapeMarkdownTableCell(value: string): string {
+  if (!value) return '';
+  return String(value).replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
+}
+
 export class ReadmeGenerator {
   /**
    * Generates or updates the problem-specific README.md.
@@ -21,15 +26,15 @@ export class ReadmeGenerator {
     solutions: SolutionRowData[]
   ): string {
     const diffBadge = problem.difficulty
-      ? `- **Difficulty:** ${problem.difficulty}\n`
+      ? `- **Difficulty:** ${escapeMarkdownTableCell(problem.difficulty)}\n`
       : '';
     const tagsLine = problem.tags && problem.tags.length > 0
-      ? `- **Tags:** ${problem.tags.map((t) => `\`${t}\``).join(', ')}\n`
+      ? `- **Tags:** ${problem.tags.map((t) => `\`${escapeMarkdownTableCell(t)}\``).join(', ')}\n`
       : '';
 
-    let md = `# ${problem.id ? `${problem.id}. ` : ''}${problem.title}\n\n`;
+    let md = `# ${problem.id ? `${escapeMarkdownTableCell(problem.id)}. ` : ''}${problem.title}\n\n`;
     md += diffBadge;
-    md += `- **LeetCode Link:** [${problem.title}](${problem.url})\n`;
+    md += `- **LeetCode Link:** [${escapeMarkdownTableCell(problem.title)}](${problem.url})\n`;
     md += tagsLine;
     md += `\n## Solutions\n\n`;
     md += `| # | Solution | File | Language | Runtime | Memory |\n`;
@@ -37,11 +42,11 @@ export class ReadmeGenerator {
 
     solutions.forEach((sol, idx) => {
       const num = idx + 1;
-      const solName = sol.name || `Solution ${num}`;
-      const fileLink = `[${sol.filename}](./${sol.filename})`;
-      const lang = sol.language || 'Unknown';
-      const rt = sol.runtime || '-';
-      const mem = sol.memory || '-';
+      const solName = escapeMarkdownTableCell(sol.name || `Solution ${num}`);
+      const fileLink = `[${escapeMarkdownTableCell(sol.filename)}](./${sol.filename})`;
+      const lang = escapeMarkdownTableCell(sol.language || 'Unknown');
+      const rt = escapeMarkdownTableCell(sol.runtime || '-');
+      const mem = escapeMarkdownTableCell(sol.memory || '-');
       md += `| ${num} | ${solName} | ${fileLink} | ${lang} | ${rt} | ${mem} |\n`;
     });
 
@@ -77,9 +82,9 @@ export class ReadmeGenerator {
     tableSection += `|---|---|---|---|\n`;
 
     for (const p of sorted) {
-      const link = `[${p.title}](./${p.folder})`;
-      const diff = p.difficulty || '-';
-      tableSection += `| ${p.id} | ${link} | ${diff} | ${p.count} |\n`;
+      const link = `[${escapeMarkdownTableCell(p.title)}](./${p.folder})`;
+      const diff = escapeMarkdownTableCell(p.difficulty || '-');
+      tableSection += `| ${escapeMarkdownTableCell(p.id)} | ${link} | ${diff} | ${p.count} |\n`;
     }
     tableSection += `\n${endTag}`;
 
