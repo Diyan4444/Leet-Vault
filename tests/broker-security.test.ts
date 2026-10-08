@@ -51,7 +51,7 @@ function callBroker(
       },
     };
 
-    handleRequest(req, res);
+    handleRequest(req, res as any);
 
     if (body) {
       req.emit('data', Buffer.from(body, 'utf8'));
