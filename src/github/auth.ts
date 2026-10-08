@@ -4,7 +4,6 @@ import { GitHubUser } from '../shared/types';
 
 export class GitHubOAuthClient {
   public static DEFAULT_BROKER_URL = 'https://leet-git-hub.vercel.app';
-<<<<<<< HEAD
 
   /**
    * Validates broker URL against approved origins (HTTPS, matching default broker host, or localhost in dev).
@@ -26,8 +25,6 @@ export class GitHubOAuthClient {
     }
     return false;
   }
-=======
->>>>>>> 71026eab6dc010bb78586627d22b26f34d0fd463
 
   /**
    * Starts OAuth authorization flow via chrome.identity.launchWebAuthFlow
@@ -87,24 +84,15 @@ export class GitHubOAuthClient {
               return;
             }
 
-<<<<<<< HEAD
             // CRITICAL: Strict CSRF State Validation - nonce must be present and match exactly
             if (!returnedState || returnedState !== state) {
               resolve({
                 success: false,
                 error: 'OAuth security verification failed: Missing or invalid state nonce. Possible CSRF interception.',
-=======
-            // CRITICAL: Strict CSRF State Validation
-            if (returnedState && returnedState !== state) {
-              resolve({
-                success: false,
-                error: 'OAuth security verification failed: State nonce mismatch. Possible CSRF interception.',
->>>>>>> 71026eab6dc010bb78586627d22b26f34d0fd463
               });
               return;
             }
 
-<<<<<<< HEAD
             const oneTimeCode = urlObj?.searchParams.get('code');
             if (!oneTimeCode) {
               resolve({
@@ -133,35 +121,6 @@ export class GitHubOAuthClient {
             const tokenJson = await tokenResponse.json();
             const token = tokenJson?.access_token;
 
-=======
-            let token: string | null = null;
-            const oneTimeCode = urlObj?.searchParams.get('code');
-
-            if (oneTimeCode) {
-              // Secure POST exchange for token using one-time opaque code
-              const tokenResponse = await fetch(`${brokerUrl}/api/token`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ code: oneTimeCode }),
-              });
-
-              if (tokenResponse.ok) {
-                const tokenJson = await tokenResponse.json();
-                token = tokenJson.access_token;
-              } else {
-                const errData = await tokenResponse.json().catch(() => ({}));
-                resolve({
-                  success: false,
-                  error: errData.error || 'Failed to exchange one-time OAuth code for access token.',
-                });
-                return;
-              }
-            } else {
-              // Backward compatibility fallback for legacy brokers
-              token = this.extractTokenFromUrl(redirectResultUrl);
-            }
-
->>>>>>> 71026eab6dc010bb78586627d22b26f34d0fd463
             if (!token) {
               resolve({ success: false, error: 'No access token received from GitHub authorization.' });
               return;

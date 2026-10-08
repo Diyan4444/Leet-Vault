@@ -304,28 +304,7 @@ export class LeetCodeParser {
       }
     }
 
-<<<<<<< HEAD
     // 5. Legacy CodeMirror 5 lines
-=======
-    // Strategy 5: CodeMirror 6 (used in modern LeetCode dynamic layout)
-    const cm6Content = document.querySelector('.cm-content') as HTMLElement | null;
-    if (cm6Content) {
-      const cm6Lines = cm6Content.querySelectorAll('.cm-line');
-      if (cm6Lines.length > 0) {
-        const codeLines = Array.from(cm6Lines).map((line) => line.textContent || '');
-        const code = codeLines.join('\n');
-        if (code.trim().length > 0) {
-          return code;
-        }
-      }
-      const rawText = cm6Content.innerText || cm6Content.textContent;
-      if (rawText && rawText.trim().length > 0) {
-        return rawText;
-      }
-    }
-
-    // Strategy 6: Legacy CodeMirror 5 lines
->>>>>>> 71026eab6dc010bb78586627d22b26f34d0fd463
     const cmLines = document.querySelectorAll('.CodeMirror-code .CodeMirror-line');
     if (cmLines.length > 0) {
       const codeLines: string[] = [];
@@ -338,11 +317,7 @@ export class LeetCodeParser {
       }
     }
 
-<<<<<<< HEAD
     // 6. Search localStorage for cached LeetCode editor content
-=======
-    // Strategy 7: Search localStorage for cached LeetCode editor content
->>>>>>> 71026eab6dc010bb78586627d22b26f34d0fd463
     if (typeof localStorage !== 'undefined') {
       try {
         const slug = LeetCodeProblemParser.extractProblemSlug();
@@ -350,11 +325,7 @@ export class LeetCodeParser {
           const key = localStorage.key(i);
           if (key && (key.includes('code') || (slug && key.includes(slug)))) {
             const val = localStorage.getItem(key);
-<<<<<<< HEAD
             if (val && typeof val === 'string' && val.length > 0) {
-=======
-            if (val && typeof val === 'string' && val.trim().length > 0) {
->>>>>>> 71026eab6dc010bb78586627d22b26f34d0fd463
               if (val.includes('class Solution') || val.includes('function') || val.includes('#include') || val.includes('def ')) {
                 return val;
               }
@@ -366,7 +337,6 @@ export class LeetCodeParser {
       }
     }
 
-<<<<<<< HEAD
     // 7. Synthetic Node test environment fallback (when Monaco is not fully mocked)
     if (typeof process !== 'undefined' && (process.env?.NODE_ENV === 'test' || process.env?.VITEST)) {
       const monacoTextarea = document.querySelector('.monaco-editor textarea') as HTMLTextAreaElement | null;
@@ -375,8 +345,6 @@ export class LeetCodeParser {
       }
     }
 
-=======
->>>>>>> 71026eab6dc010bb78586627d22b26f34d0fd463
     return null;
   }
 

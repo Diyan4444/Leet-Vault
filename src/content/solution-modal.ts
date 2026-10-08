@@ -486,11 +486,7 @@ export class SolutionModal {
 
     PerformanceProfiler.mark('t15_successUiDone');
     const profile = PerformanceProfiler.finalizeReport();
-<<<<<<< HEAD
     console.log('[Leet-Vault] Performance Profile:', profile);
-=======
-    console.log('[LeetCode GitHub Sync] Performance Profile:', profile);
->>>>>>> 71026eab6dc010bb78586627d22b26f34d0fd463
 
     // Automatically close after 1 second so the user never has to scroll to the cross button
     this.autoCloseTimer = setTimeout(() => {

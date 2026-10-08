@@ -98,11 +98,7 @@ export class SubmissionDetector {
   private keyListener: ((e: KeyboardEvent) => void) | null = null;
   private navigationChecker: any = null;
   private currentProblemSlug: string | null = null;
-<<<<<<< HEAD
   private syncOnlyAccepted: boolean = true;
-=======
-  private hasSeenJudging: boolean = false;
->>>>>>> 71026eab6dc010bb78586627d22b26f34d0fd463
 
   constructor(onAccepted: SubmissionCallback, options?: { syncOnlyAccepted?: boolean }) {
     this.onAcceptedCallback = onAccepted;
@@ -172,10 +168,6 @@ export class SubmissionDetector {
     // 2. Listen for keyboard submit shortcut (Ctrl+Enter or Cmd+Enter)
     this.keyListener = async (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-<<<<<<< HEAD
-=======
-        console.log('[LeetCode Sync] Keyboard shortcut (Ctrl/Cmd+Enter) submit detected.');
->>>>>>> 71026eab6dc010bb78586627d22b26f34d0fd463
         await this.handleSubmitTrigger();
       }
     };
@@ -239,7 +231,6 @@ export class SubmissionDetector {
     try {
       const sourceSnapshot = await LeetCodeParser.captureSourceSnapshot();
       PerformanceProfiler.mark('t1_sourceCaptured');
-<<<<<<< HEAD
       const safeSnapshot = (sourceSnapshot && sourceSnapshot.length > 0) ? sourceSnapshot : '';
       const snapshotLines = safeSnapshot ? safeSnapshot.split('\n').length : 0;
       const codeHash = computeCodeHash(safeSnapshot);
@@ -249,13 +240,6 @@ export class SubmissionDetector {
 
       const problem = LeetCodeProblemParser.extractProblemDetails();
       const language = LeetCodeParser.extractLanguage();
-=======
-      const safeSnapshot = sourceSnapshot && sourceSnapshot.trim().length > 0 ? sourceSnapshot : '';
-
-      const problem = LeetCodeProblemParser.extractProblemDetails();
-      const language = LeetCodeParser.extractLanguage();
-      const codeHash = computeCodeHash(safeSnapshot);
->>>>>>> 71026eab6dc010bb78586627d22b26f34d0fd463
       const submittedAt = Date.now();
       const attemptId = `sub_${submittedAt}_${Math.random().toString(36).substring(2, 7)}`;
 
@@ -295,7 +279,6 @@ export class SubmissionDetector {
    */
   private startWaitingForResult(): void {
     this.cleanupWaitingState();
-    this.hasSeenJudging = false;
 
     // 1. Responsive active polling loop (every 250ms, up to 25s)
     this.pollInterval = setInterval(() => {
@@ -339,7 +322,6 @@ export class SubmissionDetector {
       return;
     }
 
-<<<<<<< HEAD
     const attempt = this.currentAttempt;
     const candidateNodes = Array.from(document.querySelectorAll(RESULT_CANDIDATE_SELECTORS));
 
@@ -444,43 +426,6 @@ export class SubmissionDetector {
         console.log('[Leet-Vault] Current submission accepted');
         console.log('[Leet-Vault] Opening save popup');
 
-=======
-    const timeSinceSubmit = Date.now() - this.currentAttempt.submittedAt;
-
-    // Detect if LeetCode has transitioned through Judging / Pending state
-    const pageText = document.body ? (document.body.textContent || '') : '';
-    if (pageText.includes('Judging') || pageText.includes('Pending')) {
-      this.hasSeenJudging = true;
-    }
-
-    // Selectors for submission result containers
-    const candidateNodes = document.querySelectorAll(
-      'span[data-e2e-locator="submission-result"], div[data-e2e-locator="submission-result"], div[data-cy="submission-result"], span[class*="text-green"], div[class*="text-green"], span[class*="text-sd-green"], div[class*="text-sd-green"], span[class*="text-red"], div[class*="text-red"], [class*="status-column"]'
-    );
-
-    for (const node of Array.from(candidateNodes)) {
-      const text = (node.textContent || '').trim();
-      if (!text) continue;
-
-      if (text === 'Pending' || text === 'Judging') {
-        this.hasSeenJudging = true;
-        continue;
-      }
-
-      // Check if signature existed before submit click.
-      // Pre-existing elements are only considered fresh if we observed an active
-      // state transition through Pending/Judging. Stale results are never accepted purely by elapsed time!
-      const signature = this.getNodeSignature(node as HTMLElement);
-      const isPreExisting = this.currentAttempt.initialResultSignatures.has(signature);
-      if (isPreExisting && !this.hasSeenJudging) {
-        continue;
-      }
-
-      // 1. Check for Accepted result for THIS submission
-      if (text === 'Accepted') {
-        PerformanceProfiler.mark('t2_acceptedDetected');
-        const attempt = this.currentAttempt;
->>>>>>> 71026eab6dc010bb78586627d22b26f34d0fd463
         const resultContainer = node.closest('div[class*="result"], div[class*="submission"], div.flex') || node.parentElement;
 
         this.state = SubmissionState.ACCEPTED;

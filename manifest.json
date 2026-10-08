@@ -26,7 +26,6 @@
     {
       "matches": [
         "https://leetcode.com/*"
-<<<<<<< HEAD
       ],
       "js": [
         "content/page-bridge.js"
@@ -37,8 +36,6 @@
     {
       "matches": [
         "https://leetcode.com/*"
-=======
->>>>>>> 71026eab6dc010bb78586627d22b26f34d0fd463
       ],
       "js": [
         "content/leetcode-content.js"

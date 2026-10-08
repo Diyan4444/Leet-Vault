@@ -10,18 +10,14 @@ import https from 'node:https';
 import http from 'node:http';
 import url from 'node:url';
 import crypto from 'node:crypto';
-<<<<<<< HEAD
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-=======
->>>>>>> 71026eab6dc010bb78586627d22b26f34d0fd463
 
 // Environment variables configured on your hosting platform
 const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID || '';
 const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET || '';
 
-<<<<<<< HEAD
 // Shared store directory for serverless-safe atomic ticket redemption tracking
 function getRedemptionDir() {
   const dir = process.env.TICKET_STORE_DIR || path.join(os.tmpdir(), 'leet-vault-tickets');
@@ -174,31 +170,18 @@ function decryptTokenTicket(ticket) {
     return parsed;
   } catch {
     return null;
-=======
-// In-memory store for one-time exchange codes (TTL: 60 seconds)
-const tokenExchangeStore = new Map();
-
-function cleanupExpiredTokens() {
-  const now = Date.now();
-  for (const [key, value] of tokenExchangeStore.entries()) {
-    if (value.expires < now) tokenExchangeStore.delete(key);
->>>>>>> 71026eab6dc010bb78586627d22b26f34d0fd463
   }
 }
 
 /**
  * Validates that redirect URI belongs to an authorized Chrome extension
  * or local dev environment, preventing open-redirect vulnerabilities.
-<<<<<<< HEAD
  * In production, ALLOWED_EXTENSION_IDS is MANDATORY and fails closed if missing.
-=======
->>>>>>> 71026eab6dc010bb78586627d22b26f34d0fd463
  */
 function isValidExtensionRedirect(uri) {
   if (!uri || typeof uri !== 'string') return false;
   try {
     const parsed = new URL(uri);
-<<<<<<< HEAD
     // Allow localhost/127.0.0.1 for local extension development only in non-production
     if (process.env.NODE_ENV !== 'production' && (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1')) {
       return true;
@@ -221,15 +204,6 @@ function isValidExtensionRedirect(uri) {
         return allowed.includes(extId);
       }
       return /^[a-z]{32}$/.test(extId);
-=======
-    // Allow standard Chrome extension identity redirect URIs
-    if (parsed.protocol === 'https:' && parsed.hostname.endsWith('.chromiumapp.org')) {
-      return true;
-    }
-    // Allow localhost/127.0.0.1 for local extension development
-    if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') {
-      return true;
->>>>>>> 71026eab6dc010bb78586627d22b26f34d0fd463
     }
   } catch {
     return false;
@@ -289,16 +263,11 @@ function exchangeCodeForToken(code) {
  * Main HTTP request handler (works for Node http.createServer, Express, or Vercel handler)
  */
 export default async function handleRequest(req, res) {
-<<<<<<< HEAD
   const reqHost = req.headers['host'] || 'localhost';
   const parsedUrl = new URL(req.url, `http://${reqHost}`);
-=======
-  const parsedUrl = url.parse(req.url, true);
->>>>>>> 71026eab6dc010bb78586627d22b26f34d0fd463
   const pathname = parsedUrl.pathname;
   const query = Object.fromEntries(parsedUrl.searchParams.entries());
 
-<<<<<<< HEAD
   // CORS headers restricted strictly to authorized extension origins or dev localhost
   const origin = req.headers['origin'] || '';
   let isAllowedOrigin = false;
@@ -328,10 +297,6 @@ export default async function handleRequest(req, res) {
   if (isAllowedOrigin) {
     res.setHeader('Access-Control-Allow-Origin', origin);
   }
-=======
-  // CORS headers restricted to extension contexts
-  res.setHeader('Access-Control-Allow-Origin', '*');
->>>>>>> 71026eab6dc010bb78586627d22b26f34d0fd463
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   res.setHeader('Vary', 'Origin');
@@ -354,7 +319,6 @@ export default async function handleRequest(req, res) {
     const extensionRedirect = query.redirect_uri || '';
     const stateParam = query.state || '';
 
-<<<<<<< HEAD
     if (process.env.NODE_ENV === 'production' && getAllowedExtensionIds().length === 0) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Server configuration error: ALLOWED_EXTENSION_IDS is required in production.' }));
@@ -364,11 +328,6 @@ export default async function handleRequest(req, res) {
     if (!isValidExtensionRedirect(extensionRedirect)) {
       res.writeHead(400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Invalid or unauthorized redirect_uri. Must match an authorized Chrome extension ID.' }));
-=======
-    if (!isValidExtensionRedirect(extensionRedirect)) {
-      res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Invalid or unauthorized redirect_uri. Must be a valid Chrome extension redirect URI (*.chromiumapp.org).' }));
->>>>>>> 71026eab6dc010bb78586627d22b26f34d0fd463
       return;
     }
 
@@ -416,7 +375,6 @@ export default async function handleRequest(req, res) {
       }
     }
 
-<<<<<<< HEAD
     if (process.env.NODE_ENV === 'production' && getAllowedExtensionIds().length === 0) {
       res.writeHead(500, { 'Content-Type': 'text/plain' });
       res.end('Server configuration error: ALLOWED_EXTENSION_IDS is required in production.');
@@ -426,11 +384,6 @@ export default async function handleRequest(req, res) {
     if (!isValidExtensionRedirect(extensionRedirectUri)) {
       res.writeHead(400, { 'Content-Type': 'text/plain' });
       res.end('Invalid or unauthorized redirect URI in OAuth callback.');
-=======
-    if (!isValidExtensionRedirect(extensionRedirectUri)) {
-      res.writeHead(400, { 'Content-Type': 'text/plain' });
-      res.end('Invalid redirect URI in OAuth callback.');
->>>>>>> 71026eab6dc010bb78586627d22b26f34d0fd463
       return;
     }
 
@@ -456,7 +409,6 @@ export default async function handleRequest(req, res) {
         res.end();
         return;
       }
-<<<<<<< HEAD
 
       // Generate a stateless, tamper-proof AES-256-GCM encrypted exchange ticket (60-second TTL)
       // Serverless-safe: works across independent lambda instances without in-memory maps or external database.
@@ -467,20 +419,6 @@ export default async function handleRequest(req, res) {
         ext: extensionRedirectUri,
       });
 
-=======
-
-      const accessToken = tokenResponse.access_token;
-
-      // Generate a secure one-time exchange code (60-second TTL)
-      // Bearer token is NEVER passed in URL parameters!
-      const exchangeCode = crypto.randomBytes(24).toString('hex');
-      tokenExchangeStore.set(exchangeCode, {
-        token: accessToken,
-        expires: Date.now() + 60000,
-      });
-      cleanupExpiredTokens();
-
->>>>>>> 71026eab6dc010bb78586627d22b26f34d0fd463
       const separator = extensionRedirectUri.includes('?') ? '&' : '?';
       const statePart = stateNonce ? `&state=${encodeURIComponent(stateNonce)}` : '';
       const finalRedirect = `${extensionRedirectUri}${separator}code=${exchangeCode}${statePart}`;
@@ -495,17 +433,12 @@ export default async function handleRequest(req, res) {
     return;
   }
 
-<<<<<<< HEAD
   // 3. /api/token or /token - Secure POST endpoint to exchange one-time ticket for access token
-=======
-  // 3. /api/token or /token - Secure POST endpoint to exchange one-time code for access token
->>>>>>> 71026eab6dc010bb78586627d22b26f34d0fd463
   if ((pathname === '/api/token' || pathname === '/token') && req.method === 'POST') {
     let body = '';
     req.on('data', (chunk) => {
       body += chunk;
     });
-<<<<<<< HEAD
     req.on('end', async () => {
       try {
         const { code } = JSON.parse(body || '{}');
@@ -523,27 +456,11 @@ export default async function handleRequest(req, res) {
         }
 
         if (ticketData.exp < Date.now()) {
-=======
-    req.on('end', () => {
-      try {
-        const { code } = JSON.parse(body || '{}');
-        if (!code || !tokenExchangeStore.has(code)) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'Invalid, missing, or expired exchange code.' }));
-          return;
-        }
-
-        const record = tokenExchangeStore.get(code);
-        tokenExchangeStore.delete(code); // One-time use only
-
-        if (record.expires < Date.now()) {
->>>>>>> 71026eab6dc010bb78586627d22b26f34d0fd463
           res.writeHead(400, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: 'Exchange code expired.' }));
           return;
         }
 
-<<<<<<< HEAD
         // Atomically mark ticket as consumed to prevent replay attacks and race conditions
         const ticketId = ticketData.jti || crypto.createHash('sha256').update(code).digest('hex');
         const consumed = await consumeTicket(ticketId, ticketData.exp);
@@ -557,11 +474,6 @@ export default async function handleRequest(req, res) {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ access_token: ticketData.token }));
       } catch {
-=======
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ access_token: record.token }));
-      } catch (err) {
->>>>>>> 71026eab6dc010bb78586627d22b26f34d0fd463
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Malformed JSON request body.' }));
       }
@@ -573,7 +485,6 @@ export default async function handleRequest(req, res) {
   res.end('Not Found');
 }
 
-<<<<<<< HEAD
 export {
   handleRequest,
   isValidExtensionRedirect,
@@ -595,11 +506,3 @@ if (process.env.NODE_ENV !== 'test' && !process.env.VITEST && (!process.env.VERC
   }
 }
 
-=======
-// Start local server if run directly
-const port = process.env.PORT || 3000;
-const server = http.createServer(handleRequest);
-server.listen(port, () => {
-  console.log(`LeetCode GitHub Sync OAuth Broker running at http://localhost:${port}`);
-});
->>>>>>> 71026eab6dc010bb78586627d22b26f34d0fd463

@@ -15,7 +15,6 @@ function escapeMarkdownTableCell(value: string): string {
   return String(value).replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
 }
 
-<<<<<<< HEAD
 export interface ProblemReadmeOptions {
   includeRuntime?: boolean;
   includeMemory?: boolean;
@@ -25,8 +24,6 @@ export interface ProblemReadmeOptions {
 export const PROBLEM_SOLUTIONS_START = '<!-- LEETCODE-SOLUTIONS:START -->';
 export const PROBLEM_SOLUTIONS_END = '<!-- LEETCODE-SOLUTIONS:END -->';
 
-=======
->>>>>>> 71026eab6dc010bb78586627d22b26f34d0fd463
 export class ReadmeGenerator {
   /**
    * Generates or updates the problem-specific README.md.
@@ -38,7 +35,6 @@ export class ReadmeGenerator {
     solutions: SolutionRowData[],
     options?: ProblemReadmeOptions
   ): string {
-<<<<<<< HEAD
     const includeRuntime = options?.includeRuntime ?? true;
     const includeMemory = options?.includeMemory ?? true;
     const existingContent = options?.existingContent;
@@ -52,29 +48,12 @@ export class ReadmeGenerator {
     let solutionsTable = `## Solutions\n\n`;
     solutionsTable += `| ${headers.join(' | ')} |\n`;
     solutionsTable += `| ${dividers.join(' | ')} |\n`;
-=======
-    const diffBadge = problem.difficulty
-      ? `- **Difficulty:** ${escapeMarkdownTableCell(problem.difficulty)}\n`
-      : '';
-    const tagsLine = problem.tags && problem.tags.length > 0
-      ? `- **Tags:** ${problem.tags.map((t) => `\`${escapeMarkdownTableCell(t)}\``).join(', ')}\n`
-      : '';
-
-    let md = `# ${problem.id ? `${escapeMarkdownTableCell(problem.id)}. ` : ''}${problem.title}\n\n`;
-    md += diffBadge;
-    md += `- **LeetCode Link:** [${escapeMarkdownTableCell(problem.title)}](${problem.url})\n`;
-    md += tagsLine;
-    md += `\n## Solutions\n\n`;
-    md += `| # | Solution | File | Language | Runtime | Memory |\n`;
-    md += `|---|---|---|---|---|---|\n`;
->>>>>>> 71026eab6dc010bb78586627d22b26f34d0fd463
 
     solutions.forEach((sol, idx) => {
       const num = idx + 1;
       const solName = escapeMarkdownTableCell(sol.name || `Solution ${num}`);
       const fileLink = `[${escapeMarkdownTableCell(sol.filename)}](./${sol.filename})`;
       const lang = escapeMarkdownTableCell(sol.language || 'Unknown');
-<<<<<<< HEAD
 
       const row = [String(num), solName, fileLink, lang];
       if (includeRuntime) {
@@ -84,11 +63,6 @@ export class ReadmeGenerator {
         row.push(escapeMarkdownTableCell(sol.memory || '-'));
       }
       solutionsTable += `| ${row.join(' | ')} |\n`;
-=======
-      const rt = escapeMarkdownTableCell(sol.runtime || '-');
-      const mem = escapeMarkdownTableCell(sol.memory || '-');
-      md += `| ${num} | ${solName} | ${fileLink} | ${lang} | ${rt} | ${mem} |\n`;
->>>>>>> 71026eab6dc010bb78586627d22b26f34d0fd463
     });
 
     const markerBlock = `${PROBLEM_SOLUTIONS_START}\n${solutionsTable}\n${PROBLEM_SOLUTIONS_END}`;
