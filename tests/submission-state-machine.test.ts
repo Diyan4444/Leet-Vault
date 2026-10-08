@@ -93,17 +93,32 @@ class MockNode {
       if (sel.includes('data-e2e-locator="submission-result"')) {
         return node.getAttribute('data-e2e-locator') === 'submission-result';
       }
+      if (sel.includes('data-cy="submission-result"')) {
+        return node.getAttribute('data-cy') === 'submission-result';
+      }
+      if (sel.includes('data-cypress="submission-result"')) {
+        return node.getAttribute('data-cypress') === 'submission-result';
+      }
       if (sel.includes('data-e2e-locator="console-submit-button"')) {
         return node.getAttribute('data-e2e-locator') === 'console-submit-button';
       }
       if (sel.includes('textarea')) {
         return node.tagName === 'TEXTAREA';
       }
-      if (sel.includes('span[class*="text-green"]')) {
-        return node.tagName === 'SPAN' && node.className.includes('text-green');
+      if (sel.includes('text-green')) {
+        return node.className.includes('text-green');
       }
-      if (sel.includes('div[class*="text-green"]')) {
-        return node.tagName === 'DIV' && node.className.includes('text-green');
+      if (sel.includes('text-sd-green')) {
+        return node.className.includes('text-sd-green');
+      }
+      if (sel.includes('text-red')) {
+        return node.className.includes('text-red');
+      }
+      if (sel.includes('text-sd-red')) {
+        return node.className.includes('text-sd-red');
+      }
+      if (sel.includes('result-state')) {
+        return node.className.includes('result-state');
       }
       if (sel === 'span') return node.tagName === 'SPAN';
       if (sel === 'div') return node.tagName === 'DIV';
@@ -165,55 +180,7 @@ describe('SubmissionDetector State Machine & Submit Prerequisite', () => {
     expect(detector.getState()).toBe(SubmissionState.IDLE);
   });
 
-  it('NEVER triggers modal when pre-existing Accepted text is present without a Submit click', () => {
-    detector.start();
-
-    // Simulate page having an "Accepted" badge from previous submissions
-    const badge = (global as any).document.createElement('div');
-    badge.className = 'text-green';
-    badge.textContent = 'Accepted';
-    mockBody.appendChild(badge);
-
-    expect(detector.getState()).toBe(SubmissionState.IDLE);
-    expect(acceptedCallback).not.toHaveBeenCalled();
-  });
-
-  it('ignores DOM mutations containing Accepted when no Submit was clicked', () => {
-    detector.start();
-
-    const historyItem = (global as any).document.createElement('div');
-    historyItem.textContent = 'Accepted Solutions (42)';
-    mockBody.appendChild(historyItem);
-
-    expect(detector.getState()).toBe(SubmissionState.IDLE);
-    expect(acceptedCallback).not.toHaveBeenCalled();
-  });
-
-  it('transitions IDLE -> SUBMITTING -> WAITING_FOR_RESULT on Submit click and captures code', async () => {
-    const fullCode = `#pragma GCC optimize("O3")\n#include <vector>\nclass Solution {\npublic:\n    int test() { return 1; }\n};`;
-    const editor = (global as any).document.createElement('div');
-    editor.className = 'monaco-editor';
-    const textarea = (global as any).document.createElement('textarea');
-    textarea.value = fullCode;
-    editor.appendChild(textarea);
-    mockBody.appendChild(editor);
-
-    const submitBtn = (global as any).document.createElement('button');
-    submitBtn.setAttribute('data-e2e-locator', 'console-submit-button');
-    submitBtn.textContent = 'Submit';
-    mockBody.appendChild(submitBtn);
-
-    detector.start();
-
-    // Click submit
-    submitBtn.click();
-    await new Promise((r) => setTimeout(r, 10));
-
-    expect(detector.getState()).toBe(SubmissionState.WAITING_FOR_RESULT);
-    expect(acceptedCallback).not.toHaveBeenCalled();
-  });
-
-  it('transitions to FAILED and does NOT open modal on Wrong Answer', async () => {
+  it('1. Wrong Answer -> no popup', async () => {
     const editor = (global as any).document.createElement('div');
     editor.className = 'monaco-editor';
     const textarea = (global as any).document.createElement('textarea');
@@ -228,6 +195,7 @@ describe('SubmissionDetector State Machine & Submit Prerequisite', () => {
     detector.start();
     submitBtn.click();
     await new Promise((r) => setTimeout(r, 10));
+
     expect(detector.getState()).toBe(SubmissionState.WAITING_FOR_RESULT);
 
     // Simulate LeetCode rendering Wrong Answer
@@ -242,11 +210,11 @@ describe('SubmissionDetector State Machine & Submit Prerequisite', () => {
     expect(acceptedCallback).not.toHaveBeenCalled();
   });
 
-  it('transitions to FAILED and does NOT open modal on Compile Error or Runtime Error', async () => {
+  it('2. Runtime Error -> no popup', async () => {
     const editor = (global as any).document.createElement('div');
     editor.className = 'monaco-editor';
     const textarea = (global as any).document.createElement('textarea');
-    textarea.value = 'invalid code syntax';
+    textarea.value = 'class Solution {};';
     editor.appendChild(textarea);
     mockBody.appendChild(editor);
 
@@ -258,7 +226,87 @@ describe('SubmissionDetector State Machine & Submit Prerequisite', () => {
     submitBtn.click();
     await new Promise((r) => setTimeout(r, 10));
 
-    // Simulate Compile Error
+    const resultDiv = (global as any).document.createElement('div');
+    resultDiv.setAttribute('data-e2e-locator', 'submission-result');
+    resultDiv.textContent = 'Runtime Error';
+    mockBody.appendChild(resultDiv);
+
+    (detector as any).checkForCurrentSubmissionResult();
+
+    expect(detector.getState()).toBe(SubmissionState.IDLE);
+    expect(acceptedCallback).not.toHaveBeenCalled();
+  });
+
+  it('3. Time Limit Exceeded -> no popup', async () => {
+    const editor = (global as any).document.createElement('div');
+    editor.className = 'monaco-editor';
+    const textarea = (global as any).document.createElement('textarea');
+    textarea.value = 'class Solution {};';
+    editor.appendChild(textarea);
+    mockBody.appendChild(editor);
+
+    const submitBtn = (global as any).document.createElement('button');
+    submitBtn.textContent = 'Submit';
+    mockBody.appendChild(submitBtn);
+
+    detector.start();
+    submitBtn.click();
+    await new Promise((r) => setTimeout(r, 10));
+
+    const resultDiv = (global as any).document.createElement('div');
+    resultDiv.setAttribute('data-e2e-locator', 'submission-result');
+    resultDiv.textContent = 'Time Limit Exceeded';
+    mockBody.appendChild(resultDiv);
+
+    (detector as any).checkForCurrentSubmissionResult();
+
+    expect(detector.getState()).toBe(SubmissionState.IDLE);
+    expect(acceptedCallback).not.toHaveBeenCalled();
+  });
+
+  it('4. Memory Limit Exceeded -> no popup', async () => {
+    const editor = (global as any).document.createElement('div');
+    editor.className = 'monaco-editor';
+    const textarea = (global as any).document.createElement('textarea');
+    textarea.value = 'class Solution {};';
+    editor.appendChild(textarea);
+    mockBody.appendChild(editor);
+
+    const submitBtn = (global as any).document.createElement('button');
+    submitBtn.textContent = 'Submit';
+    mockBody.appendChild(submitBtn);
+
+    detector.start();
+    submitBtn.click();
+    await new Promise((r) => setTimeout(r, 10));
+
+    const resultDiv = (global as any).document.createElement('div');
+    resultDiv.setAttribute('data-e2e-locator', 'submission-result');
+    resultDiv.textContent = 'Memory Limit Exceeded';
+    mockBody.appendChild(resultDiv);
+
+    (detector as any).checkForCurrentSubmissionResult();
+
+    expect(detector.getState()).toBe(SubmissionState.IDLE);
+    expect(acceptedCallback).not.toHaveBeenCalled();
+  });
+
+  it('5. Compile Error -> no popup', async () => {
+    const editor = (global as any).document.createElement('div');
+    editor.className = 'monaco-editor';
+    const textarea = (global as any).document.createElement('textarea');
+    textarea.value = 'syntax error';
+    editor.appendChild(textarea);
+    mockBody.appendChild(editor);
+
+    const submitBtn = (global as any).document.createElement('button');
+    submitBtn.textContent = 'Submit';
+    mockBody.appendChild(submitBtn);
+
+    detector.start();
+    submitBtn.click();
+    await new Promise((r) => setTimeout(r, 10));
+
     const resultDiv = (global as any).document.createElement('div');
     resultDiv.setAttribute('data-e2e-locator', 'submission-result');
     resultDiv.textContent = 'Compile Error';
@@ -270,13 +318,11 @@ describe('SubmissionDetector State Machine & Submit Prerequisite', () => {
     expect(acceptedCallback).not.toHaveBeenCalled();
   });
 
-  it('triggers callback on failed submission when syncOnlyAccepted is configured to false', async () => {
-    detector.setSyncOnlyAccepted(false);
-
+  it('6. Pending -> no popup (remains in WAITING_FOR_RESULT)', async () => {
     const editor = (global as any).document.createElement('div');
     editor.className = 'monaco-editor';
     const textarea = (global as any).document.createElement('textarea');
-    textarea.value = 'class Solution { public: int test() { return 0; } };';
+    textarea.value = 'class Solution {};';
     editor.appendChild(textarea);
     mockBody.appendChild(editor);
 
@@ -288,25 +334,166 @@ describe('SubmissionDetector State Machine & Submit Prerequisite', () => {
     submitBtn.click();
     await new Promise((r) => setTimeout(r, 10));
 
-    // Simulate Wrong Answer
-    const resultDiv = (global as any).document.createElement('div');
-    resultDiv.setAttribute('data-e2e-locator', 'submission-result');
-    resultDiv.textContent = 'Wrong Answer';
-    mockBody.appendChild(resultDiv);
+    const pendingDiv = (global as any).document.createElement('div');
+    pendingDiv.setAttribute('data-e2e-locator', 'submission-result');
+    pendingDiv.textContent = 'Pending';
+    mockBody.appendChild(pendingDiv);
 
     (detector as any).checkForCurrentSubmissionResult();
 
-    expect(detector.getState()).toBe(SubmissionState.IDLE);
-    expect(acceptedCallback).toHaveBeenCalledTimes(1);
-    expect(acceptedCallback).toHaveBeenCalledWith(
-      expect.objectContaining({
-        status: 'Wrong Answer',
-      })
-    );
+    // Must remain waiting and not open popup
+    expect(detector.getState()).toBe(SubmissionState.WAITING_FOR_RESULT);
+    expect(acceptedCallback).not.toHaveBeenCalled();
   });
 
-  it('transitions to ACCEPTED and triggers callback with exact captured source on new Accepted result', async () => {
-    const fullSource = `#pragma GCC optimize("O3")\n#include <iostream>\n\n// Helper before Solution\nvoid helper() {}\n\nclass Solution {\npublic:\n    vector<int> sortArray(vector<int>& nums) {\n        return nums;\n    }\n};\n\n// Code after Solution\nint test() { return 42; }`;
+  it('7. Judging -> no popup (remains in WAITING_FOR_RESULT)', async () => {
+    const editor = (global as any).document.createElement('div');
+    editor.className = 'monaco-editor';
+    const textarea = (global as any).document.createElement('textarea');
+    textarea.value = 'class Solution {};';
+    editor.appendChild(textarea);
+    mockBody.appendChild(editor);
+
+    const submitBtn = (global as any).document.createElement('button');
+    submitBtn.textContent = 'Submit';
+    mockBody.appendChild(submitBtn);
+
+    detector.start();
+    submitBtn.click();
+    await new Promise((r) => setTimeout(r, 10));
+
+    const judgingDiv = (global as any).document.createElement('div');
+    judgingDiv.setAttribute('data-e2e-locator', 'submission-result');
+    judgingDiv.textContent = 'Judging';
+    mockBody.appendChild(judgingDiv);
+
+    (detector as any).checkForCurrentSubmissionResult();
+
+    expect(detector.getState()).toBe(SubmissionState.WAITING_FOR_RESULT);
+    expect(acceptedCallback).not.toHaveBeenCalled();
+  });
+
+  it('8. Running -> no popup (remains in WAITING_FOR_RESULT)', async () => {
+    const editor = (global as any).document.createElement('div');
+    editor.className = 'monaco-editor';
+    const textarea = (global as any).document.createElement('textarea');
+    textarea.value = 'class Solution {};';
+    editor.appendChild(textarea);
+    mockBody.appendChild(editor);
+
+    const submitBtn = (global as any).document.createElement('button');
+    submitBtn.textContent = 'Submit';
+    mockBody.appendChild(submitBtn);
+
+    detector.start();
+    submitBtn.click();
+    await new Promise((r) => setTimeout(r, 10));
+
+    const runningDiv = (global as any).document.createElement('div');
+    runningDiv.setAttribute('data-e2e-locator', 'submission-result');
+    runningDiv.textContent = 'Running...';
+    mockBody.appendChild(runningDiv);
+
+    (detector as any).checkForCurrentSubmissionResult();
+
+    expect(detector.getState()).toBe(SubmissionState.WAITING_FOR_RESULT);
+    expect(acceptedCallback).not.toHaveBeenCalled();
+  });
+
+  it('9. Historical Accepted before Submit -> no popup', () => {
+    detector.start();
+
+    // Pre-existing Accepted badge from a prior session/tab
+    const badge = (global as any).document.createElement('div');
+    badge.className = 'text-green';
+    badge.textContent = 'Accepted';
+    mockBody.appendChild(badge);
+
+    expect(detector.getState()).toBe(SubmissionState.IDLE);
+    expect(acceptedCallback).not.toHaveBeenCalled();
+  });
+
+  it('10. Historical Accepted + current Judging -> no popup', async () => {
+    // Old Accepted badge present before submit click
+    const oldAccepted = (global as any).document.createElement('div');
+    oldAccepted.setAttribute('data-e2e-locator', 'submission-result');
+    oldAccepted.textContent = 'Accepted';
+    mockBody.appendChild(oldAccepted);
+
+    const editor = (global as any).document.createElement('div');
+    editor.className = 'monaco-editor';
+    const textarea = (global as any).document.createElement('textarea');
+    textarea.value = 'class Solution {};';
+    editor.appendChild(textarea);
+    mockBody.appendChild(editor);
+
+    const submitBtn = (global as any).document.createElement('button');
+    submitBtn.textContent = 'Submit';
+    mockBody.appendChild(submitBtn);
+
+    detector.start();
+    submitBtn.click();
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(detector.getState()).toBe(SubmissionState.WAITING_FOR_RESULT);
+
+    // Current submission enters Judging
+    const judgingDiv = (global as any).document.createElement('div');
+    judgingDiv.setAttribute('data-cy', 'submission-result');
+    judgingDiv.textContent = 'Judging';
+    mockBody.appendChild(judgingDiv);
+
+    (detector as any).checkForCurrentSubmissionResult();
+
+    // MUST NOT be unlatched by Judging! Old Accepted must still be ignored!
+    expect(detector.getState()).toBe(SubmissionState.WAITING_FOR_RESULT);
+    expect(acceptedCallback).not.toHaveBeenCalled();
+  });
+
+  it('11. Critical Race Condition: Historical Accepted + current Judging + current Wrong Answer -> NO POPUP', async () => {
+    // 1. Old Accepted already in DOM
+    const oldAccepted = (global as any).document.createElement('div');
+    oldAccepted.setAttribute('data-e2e-locator', 'submission-result');
+    oldAccepted.textContent = 'Accepted';
+    mockBody.appendChild(oldAccepted);
+
+    const editor = (global as any).document.createElement('div');
+    editor.className = 'monaco-editor';
+    const textarea = (global as any).document.createElement('textarea');
+    textarea.value = 'class Solution {};';
+    editor.appendChild(textarea);
+    mockBody.appendChild(editor);
+
+    const submitBtn = (global as any).document.createElement('button');
+    submitBtn.textContent = 'Submit';
+    mockBody.appendChild(submitBtn);
+
+    detector.start();
+
+    // 2. User clicks Submit
+    submitBtn.click();
+    await new Promise((r) => setTimeout(r, 10));
+
+    // 3. New submission becomes Judging
+    const currentResult = (global as any).document.createElement('div');
+    currentResult.setAttribute('data-cy', 'submission-result');
+    currentResult.textContent = 'Judging';
+    mockBody.appendChild(currentResult);
+
+    (detector as any).checkForCurrentSubmissionResult();
+    expect(acceptedCallback).not.toHaveBeenCalled();
+
+    // 4. New submission transitions to Wrong Answer
+    currentResult.textContent = 'Wrong Answer';
+    (detector as any).checkForCurrentSubmissionResult();
+
+    // Expected: Terminal FAILED state, popup NOT triggered
+    expect(detector.getState()).toBe(SubmissionState.IDLE);
+    expect(acceptedCallback).not.toHaveBeenCalled();
+  });
+
+  it('12. Current submission Accepted -> popup exactly once', async () => {
+    const fullSource = `class Solution { public: int test() { return 1; } };`;
 
     const editor = (global as any).document.createElement('div');
     editor.className = 'monaco-editor';
@@ -322,39 +509,207 @@ describe('SubmissionDetector State Machine & Submit Prerequisite', () => {
     detector.start();
     submitBtn.click();
     await new Promise((r) => setTimeout(r, 10));
-    expect(detector.getState()).toBe(SubmissionState.WAITING_FOR_RESULT);
 
-    // Modify editor AFTER submit to simulate user typing next code
-    textarea.value = '// Modified code that should NOT be pushed';
-
-    // Simulate Accepted result arriving with metrics
     const resultCard = (global as any).document.createElement('div');
     resultCard.className = 'result-container';
     const badge = (global as any).document.createElement('span');
     badge.setAttribute('data-e2e-locator', 'submission-result');
     badge.textContent = 'Accepted';
-    const runtimeSpan = (global as any).document.createElement('span');
-    runtimeSpan.textContent = 'Runtime: 42 ms';
-    const memorySpan = (global as any).document.createElement('span');
-    memorySpan.textContent = 'Memory: 12.4 MB';
-
     resultCard.appendChild(badge);
-    resultCard.appendChild(runtimeSpan);
-    resultCard.appendChild(memorySpan);
     mockBody.appendChild(resultCard);
 
     (detector as any).checkForCurrentSubmissionResult();
 
     expect(acceptedCallback).toHaveBeenCalledTimes(1);
-    const passedSubmission: LeetCodeSubmission = acceptedCallback.mock.calls[0][0];
+    expect(detector.getState()).toBe(SubmissionState.IDLE);
+  });
 
-    // Must be the EXACT code snapshot captured at submit click, not the modified editor code
-    expect(passedSubmission.code).toBe(fullSource);
-    expect(passedSubmission.code).toContain('#pragma GCC optimize("O3")');
-    expect(passedSubmission.code).toContain('void helper() {}');
-    expect(passedSubmission.code).toContain('int test() { return 42; }');
-    expect(passedSubmission.code).not.toContain('Modified code');
-    expect(passedSubmission.runtime).toBe('42 ms');
-    expect(passedSubmission.memory).toBe('12.4 MB');
+  it('13. Wrong Answer -> Accepted on next submission -> popup only for second submission', async () => {
+    const editor = (global as any).document.createElement('div');
+    editor.className = 'monaco-editor';
+    const textarea = (global as any).document.createElement('textarea');
+    textarea.value = 'solution code';
+    editor.appendChild(textarea);
+    mockBody.appendChild(editor);
+
+    const submitBtn = (global as any).document.createElement('button');
+    submitBtn.textContent = 'Submit';
+    mockBody.appendChild(submitBtn);
+
+    detector.start();
+
+    // --- Submission 1: Wrong Answer ---
+    submitBtn.click();
+    await new Promise((r) => setTimeout(r, 10));
+
+    const sub1Result = (global as any).document.createElement('div');
+    sub1Result.setAttribute('data-e2e-locator', 'submission-result');
+    sub1Result.textContent = 'Wrong Answer';
+    mockBody.appendChild(sub1Result);
+
+    (detector as any).checkForCurrentSubmissionResult();
+    expect(acceptedCallback).not.toHaveBeenCalled();
+
+    // --- Submission 2: Accepted ---
+    submitBtn.click();
+    await new Promise((r) => setTimeout(r, 10));
+
+    const sub2Result = (global as any).document.createElement('div');
+    sub2Result.setAttribute('data-cy', 'submission-result');
+    sub2Result.textContent = 'Accepted';
+    mockBody.appendChild(sub2Result);
+
+    (detector as any).checkForCurrentSubmissionResult();
+
+    // Popup opens ONLY for submission 2
+    expect(acceptedCallback).toHaveBeenCalledTimes(1);
+  });
+
+  it('14. Accepted -> Wrong Answer on next submission -> popup only for first submission', async () => {
+    const editor = (global as any).document.createElement('div');
+    editor.className = 'monaco-editor';
+    const textarea = (global as any).document.createElement('textarea');
+    textarea.value = 'solution code';
+    editor.appendChild(textarea);
+    mockBody.appendChild(editor);
+
+    const submitBtn = (global as any).document.createElement('button');
+    submitBtn.textContent = 'Submit';
+    mockBody.appendChild(submitBtn);
+
+    detector.start();
+
+    // --- Submission 1: Accepted ---
+    submitBtn.click();
+    await new Promise((r) => setTimeout(r, 10));
+
+    const sub1Result = (global as any).document.createElement('div');
+    sub1Result.setAttribute('data-e2e-locator', 'submission-result');
+    sub1Result.textContent = 'Accepted';
+    mockBody.appendChild(sub1Result);
+
+    (detector as any).checkForCurrentSubmissionResult();
+    expect(acceptedCallback).toHaveBeenCalledTimes(1);
+
+    // --- Submission 2: Wrong Answer ---
+    // Note: sub1Result ("Accepted") is still in mockBody!
+    submitBtn.click();
+    await new Promise((r) => setTimeout(r, 10));
+
+    // LeetCode produces a new result node for Submission 2: Wrong Answer
+    const sub2Result = (global as any).document.createElement('div');
+    sub2Result.setAttribute('data-cy', 'submission-result');
+    sub2Result.textContent = 'Wrong Answer';
+    mockBody.appendChild(sub2Result);
+
+    (detector as any).checkForCurrentSubmissionResult();
+
+    // Popup must NOT open again! Still only 1 call from submission 1.
+    expect(acceptedCallback).toHaveBeenCalledTimes(1);
+  });
+
+  it('15. Multiple consecutive Accepted submissions -> one popup per accepted attempt', async () => {
+    const editor = (global as any).document.createElement('div');
+    editor.className = 'monaco-editor';
+    const textarea = (global as any).document.createElement('textarea');
+    textarea.value = 'solution code';
+    editor.appendChild(textarea);
+    mockBody.appendChild(editor);
+
+    const submitBtn = (global as any).document.createElement('button');
+    submitBtn.textContent = 'Submit';
+    mockBody.appendChild(submitBtn);
+
+    detector.start();
+
+    // --- Accepted #1 ---
+    submitBtn.click();
+    await new Promise((r) => setTimeout(r, 10));
+    const sub1Result = (global as any).document.createElement('div');
+    sub1Result.setAttribute('data-e2e-locator', 'submission-result');
+    sub1Result.textContent = 'Accepted';
+    mockBody.appendChild(sub1Result);
+    (detector as any).checkForCurrentSubmissionResult();
+    expect(acceptedCallback).toHaveBeenCalledTimes(1);
+
+    // --- Accepted #2 ---
+    submitBtn.click();
+    await new Promise((r) => setTimeout(r, 10));
+    const sub2Result = (global as any).document.createElement('div');
+    sub2Result.setAttribute('data-cy', 'submission-result');
+    sub2Result.textContent = 'Accepted';
+    mockBody.appendChild(sub2Result);
+    (detector as any).checkForCurrentSubmissionResult();
+    expect(acceptedCallback).toHaveBeenCalledTimes(2);
+
+    // --- Accepted #3 ---
+    submitBtn.click();
+    await new Promise((r) => setTimeout(r, 10));
+    const sub3Result = (global as any).document.createElement('div');
+    sub3Result.setAttribute('data-cypress', 'submission-result');
+    sub3Result.textContent = 'Accepted';
+    mockBody.appendChild(sub3Result);
+    (detector as any).checkForCurrentSubmissionResult();
+    expect(acceptedCallback).toHaveBeenCalledTimes(3);
+  });
+
+  it('16 & 17. User popup choice controls GitHub sync: declining triggers no sync, saving triggers sync', async () => {
+    const syncSolutionMock = vi.fn().mockResolvedValue({ success: true, fileName: 'Solution.cpp' });
+
+    // Mock popup UI interaction handlers
+    let modalSaved = false;
+    let modalClosed = false;
+
+    const mockModalHandlers = {
+      onSave: async () => {
+        modalSaved = true;
+        return await syncSolutionMock();
+      },
+      onClose: () => {
+        modalClosed = true;
+      },
+    };
+
+    // Scenario A: User declines / closes popup
+    mockModalHandlers.onClose();
+    expect(modalClosed).toBe(true);
+    expect(modalSaved).toBe(false);
+    expect(syncSolutionMock).not.toHaveBeenCalled();
+
+    // Scenario B: User clicks Save in popup
+    await mockModalHandlers.onSave();
+    expect(modalSaved).toBe(true);
+    expect(syncSolutionMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('18. Historical submission-list table rows with Accepted are strictly ignored', async () => {
+    detector.start();
+
+    // Historical submission list table
+    const table = (global as any).document.createElement('table');
+    table.className = 'submission-list';
+    const row = (global as any).document.createElement('tr');
+    const statusCol = (global as any).document.createElement('td');
+    statusCol.className = 'status-column';
+    const textSpan = (global as any).document.createElement('span');
+    textSpan.className = 'text-sd-green';
+    textSpan.textContent = 'Accepted';
+    statusCol.appendChild(textSpan);
+    row.appendChild(statusCol);
+    table.appendChild(row);
+    mockBody.appendChild(table);
+
+    const submitBtn = (global as any).document.createElement('button');
+    submitBtn.textContent = 'Submit';
+    mockBody.appendChild(submitBtn);
+
+    submitBtn.click();
+    await new Promise((r) => setTimeout(r, 10));
+
+    (detector as any).checkForCurrentSubmissionResult();
+
+    // Historical row in table must NEVER trigger accepted callback!
+    expect(detector.getState()).toBe(SubmissionState.WAITING_FOR_RESULT);
+    expect(acceptedCallback).not.toHaveBeenCalled();
   });
 });

@@ -26,10 +26,12 @@ class LeetCodeContentApp {
 
     this.detector.start();
 
-    // Listen to background messages if any
+    // Listen to background messages if any (enforce strict Accepted status gate)
     chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       if (message.type === MESSAGES.SHOW_SAVE_POPUP && message.payload) {
-        this.handleAcceptedSubmission(message.payload);
+        if (message.payload.status === 'Accepted') {
+          this.handleAcceptedSubmission(message.payload);
+        }
         sendResponse({ received: true });
       }
       return true;
@@ -37,6 +39,12 @@ class LeetCodeContentApp {
   }
 
   private async handleAcceptedSubmission(submission: LeetCodeSubmission): Promise<void> {
+    // Strict prerequisite: Only terminal 'Accepted' status can open the save popup
+    if (submission.status !== 'Accepted') {
+      console.log(`[Leet-Vault] Non-accepted submission ignored (${submission.status}); popup suppressed.`);
+      return;
+    }
+
     console.log('[Leet-Vault] Submission detected for:', submission.problem.title, `(${submission.status})`);
 
     // 1. Authoritative check: Is GitHub connected and repository verified?

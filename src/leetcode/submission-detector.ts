@@ -15,7 +15,62 @@ export enum SubmissionState {
   TIMEOUT = 'TIMEOUT',
 }
 
-interface ActiveSubmissionAttempt {
+export type SubmissionClassification =
+  | 'PENDING'
+  | 'JUDGING'
+  | 'RUNNING'
+  | 'ACCEPTED'
+  | 'WRONG_ANSWER'
+  | 'RUNTIME_ERROR'
+  | 'TIME_LIMIT_EXCEEDED'
+  | 'MEMORY_LIMIT_EXCEEDED'
+  | 'COMPILE_ERROR'
+  | 'COMPILATION_ERROR'
+  | 'OUTPUT_LIMIT_EXCEEDED'
+  | 'UNKNOWN';
+
+export const RESULT_CANDIDATE_SELECTORS = [
+  'span[data-e2e-locator="submission-result"]',
+  'div[data-e2e-locator="submission-result"]',
+  'p[data-e2e-locator="submission-result"]',
+  'div[data-cy="submission-result"]',
+  'span[data-cy="submission-result"]',
+  'div[data-cypress="submission-result"]',
+  'span[data-cypress="submission-result"]',
+  'div[class*="result-state"]',
+  'span[class*="result-state"]',
+  'span[class*="text-green"]',
+  'div[class*="text-green"]',
+  'span[class*="text-sd-green"]',
+  'div[class*="text-sd-green"]',
+  'span[class*="text-red"]',
+  'div[class*="text-red"]',
+  'span[class*="text-sd-red"]',
+  'div[class*="text-sd-red"]',
+].join(', ');
+
+/**
+ * Classifies raw DOM status text into a recognized submission status.
+ */
+export function classifySubmissionStatus(rawText: string): SubmissionClassification {
+  const normalized = (rawText || '').trim().toLowerCase();
+
+  if (normalized === 'accepted') return 'ACCEPTED';
+  if (normalized === 'wrong answer') return 'WRONG_ANSWER';
+  if (normalized === 'compile error') return 'COMPILE_ERROR';
+  if (normalized === 'compilation error') return 'COMPILATION_ERROR';
+  if (normalized === 'runtime error') return 'RUNTIME_ERROR';
+  if (normalized === 'time limit exceeded') return 'TIME_LIMIT_EXCEEDED';
+  if (normalized === 'memory limit exceeded') return 'MEMORY_LIMIT_EXCEEDED';
+  if (normalized === 'output limit exceeded') return 'OUTPUT_LIMIT_EXCEEDED';
+  if (normalized === 'pending') return 'PENDING';
+  if (normalized === 'judging') return 'JUDGING';
+  if (normalized.startsWith('running') || normalized === 'submitting') return 'RUNNING';
+
+  return 'UNKNOWN';
+}
+
+export interface ActiveSubmissionAttempt {
   attemptId: string;
   problemId: string;
   problemSlug: string;
@@ -23,7 +78,12 @@ interface ActiveSubmissionAttempt {
   sourceSnapshot: string;
   sourceHash: string;
   submittedAt: number;
+  preExistingElements: Set<Element>;
+  preExistingElementTexts: Map<Element, string>;
   initialResultSignatures: Set<string>;
+  inProgressElements: Set<Element>;
+  observedStatuses: Set<string>;
+  state: SubmissionState;
 }
 
 export class SubmissionDetector {
@@ -38,7 +98,6 @@ export class SubmissionDetector {
   private keyListener: ((e: KeyboardEvent) => void) | null = null;
   private navigationChecker: any = null;
   private currentProblemSlug: string | null = null;
-  private hasSeenJudging: boolean = false;
   private syncOnlyAccepted: boolean = true;
 
   constructor(onAccepted: SubmissionCallback, options?: { syncOnlyAccepted?: boolean }) {
@@ -109,7 +168,6 @@ export class SubmissionDetector {
     // 2. Listen for keyboard submit shortcut (Ctrl+Enter or Cmd+Enter)
     this.keyListener = async (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-        console.log('[LeetCode Sync] Keyboard shortcut (Ctrl/Cmd+Enter) submit detected.');
         await this.handleSubmitTrigger();
       }
     };
@@ -179,23 +237,33 @@ export class SubmissionDetector {
       console.log(
         `[Leet-Vault Pipeline Diagnostics] submission snapshot length: ${safeSnapshot.length}, submission snapshot line count: ${snapshotLines}, source hash: ${codeHash}`
       );
+
       const problem = LeetCodeProblemParser.extractProblemDetails();
       const language = LeetCodeParser.extractLanguage();
       const submittedAt = Date.now();
+      const attemptId = `sub_${submittedAt}_${Math.random().toString(36).substring(2, 7)}`;
 
-      // Snapshot any existing result badges on the page to ignore stale Accepted cards
-      const initialResultSignatures = this.captureExistingResultSignatures();
+      // Snapshot any existing result badges and elements at T0 to ignore stale cards
+      const { elements, texts, signatures } = this.captureExistingState();
 
       this.currentAttempt = {
-        attemptId: `sub_${submittedAt}_${Math.random().toString(36).substring(2, 7)}`,
+        attemptId,
         problemId: problem?.id || '0000',
         problemSlug: problem?.slug || '',
         language,
         sourceSnapshot: safeSnapshot,
         sourceHash: codeHash,
         submittedAt,
-        initialResultSignatures,
+        preExistingElements: elements,
+        preExistingElementTexts: texts,
+        initialResultSignatures: signatures,
+        inProgressElements: new Set<Element>(),
+        observedStatuses: new Set<string>(),
+        state: SubmissionState.WAITING_FOR_RESULT,
       };
+
+      console.log(`[Leet-Vault] Submission started: ${attemptId}`);
+      console.log(`[Leet-Vault] Source snapshot captured: ${snapshotLines} lines`);
 
       this.state = SubmissionState.WAITING_FOR_RESULT;
       this.startWaitingForResult();
@@ -211,7 +279,6 @@ export class SubmissionDetector {
    */
   private startWaitingForResult(): void {
     this.cleanupWaitingState();
-    this.hasSeenJudging = false;
 
     // 1. Responsive active polling loop (every 250ms, up to 25s)
     this.pollInterval = setInterval(() => {
@@ -255,75 +322,73 @@ export class SubmissionDetector {
       return;
     }
 
-    const timeSinceSubmit = Date.now() - this.currentAttempt.submittedAt;
+    const attempt = this.currentAttempt;
+    const candidateNodes = Array.from(document.querySelectorAll(RESULT_CANDIDATE_SELECTORS));
 
-    // Detect if LeetCode has transitioned through Judging / Pending state
-    const pageText = document.body ? (document.body.textContent || '') : '';
-    if (pageText.includes('Judging') || pageText.includes('Pending')) {
-      this.hasSeenJudging = true;
-    }
+    for (const node of candidateNodes) {
+      // 1. Exclude historical submission list or table elements
+      if (this.isHistoricalElement(node)) {
+        continue;
+      }
 
-    // Selectors for submission result containers
-    const candidateNodes = document.querySelectorAll(
-      'span[data-e2e-locator="submission-result"], div[data-e2e-locator="submission-result"], div[data-cy="submission-result"], span[class*="text-green"], div[class*="text-green"], span[class*="text-sd-green"], div[class*="text-sd-green"], span[class*="text-red"], div[class*="text-red"], [class*="status-column"]'
-    );
-
-    for (const node of Array.from(candidateNodes)) {
       const text = (node.textContent || '').trim();
       if (!text) continue;
 
-      if (text === 'Pending' || text === 'Judging') {
-        this.hasSeenJudging = true;
+      const classification = classifySubmissionStatus(text);
+      if (classification === 'UNKNOWN') {
         continue;
       }
 
-      // Check if signature existed before submit click.
-      // Pre-existing elements are only considered fresh if we observed an active
-      // state transition through Pending/Judging. Stale results are never accepted purely by elapsed time!
-      const signature = this.getNodeSignature(node as HTMLElement);
-      const isPreExisting = this.currentAttempt.initialResultSignatures.has(signature);
-      if (isPreExisting && !this.hasSeenJudging) {
-        continue;
-      }
-
-      // 1. Check for Accepted result for THIS submission
-      if (text === 'Accepted') {
-        PerformanceProfiler.mark('t2_acceptedDetected');
-        const attempt = this.currentAttempt;
-        const resultContainer = node.closest('div[class*="result"], div[class*="submission"], div.flex') || node.parentElement;
-
-        this.state = SubmissionState.ACCEPTED;
-        this.cleanupWaitingState();
-
-        // Synthesize submission using the EXACT captured source snapshot from submit click
-        const submission = LeetCodeParser.parseAcceptedSubmission(
-          attempt.sourceSnapshot,
-          resultContainer
-        );
-
-        if (submission) {
-          // Trigger modal only through the accepted state transition
-          this.onAcceptedCallback(submission);
+      // 2. In-progress states (Pending, Judging, Running)
+      if (classification === 'PENDING' || classification === 'JUDGING' || classification === 'RUNNING') {
+        attempt.inProgressElements.add(node);
+        if (!attempt.observedStatuses.has(text)) {
+          attempt.observedStatuses.add(text);
+          console.log(`[Leet-Vault] Current result: ${text}`);
         }
-
-        this.state = SubmissionState.IDLE;
-        this.currentAttempt = null;
-        return;
+        // State remains WAITING_FOR_RESULT; wait for terminal outcome
+        continue;
       }
 
-      // 2. Check for Failed result (Wrong Answer, Runtime Error, Compile Error, TLE, etc.)
+      // 3. Stale/Historical check for this candidate node
+      const isPreExistingNode = attempt.preExistingElements.has(node);
+      const initialText = attempt.preExistingElementTexts.get(node);
+      const signature = this.getNodeSignature(node as HTMLElement);
+      const isPreExistingSig = attempt.initialResultSignatures.has(signature);
+
+      // Was this element already present at T0 with this exact terminal text?
+      const wasUnchangedTerminalNodeFromT0 =
+        (isPreExistingNode && initialText === text) ||
+        (isPreExistingSig && isPreExistingNode && initialText === text);
+
+      // If an element was already sitting with this terminal text before Submit,
+      // it is historical UNLESS this specific element demonstrably transitioned
+      // through an in-progress state during this attempt.
+      if (wasUnchangedTerminalNodeFromT0 && !attempt.inProgressElements.has(node)) {
+        if (classification === 'ACCEPTED') {
+          console.log('[Leet-Vault] Ignoring historical Accepted result');
+        }
+        continue;
+      }
+
+      // 4. Terminal Non-Accepted states (Wrong Answer, Runtime Error, etc.)
       const isFailed =
-        text === 'Wrong Answer' ||
-        text === 'Compile Error' ||
-        text === 'Compilation Error' ||
-        text === 'Runtime Error' ||
-        text === 'Time Limit Exceeded' ||
-        text === 'Memory Limit Exceeded' ||
-        text === 'Output Limit Exceeded';
+        classification === 'WRONG_ANSWER' ||
+        classification === 'COMPILE_ERROR' ||
+        classification === 'COMPILATION_ERROR' ||
+        classification === 'RUNTIME_ERROR' ||
+        classification === 'TIME_LIMIT_EXCEEDED' ||
+        classification === 'MEMORY_LIMIT_EXCEEDED' ||
+        classification === 'OUTPUT_LIMIT_EXCEEDED';
 
       if (isFailed) {
+        if (!attempt.observedStatuses.has(text)) {
+          attempt.observedStatuses.add(text);
+          console.log(`[Leet-Vault] Current result: ${text}`);
+        }
+
         if (this.syncOnlyAccepted) {
-          console.log(`[LeetCode Sync] Submission failed with status: ${text}. No popup shown.`);
+          console.log('[Leet-Vault] Submission failed; popup suppressed');
           this.state = SubmissionState.FAILED;
           this.cleanupWaitingState();
           this.state = SubmissionState.IDLE;
@@ -331,8 +396,7 @@ export class SubmissionDetector {
           return;
         }
 
-        // If syncOnlyAccepted is false, allow capturing failed submission
-        const attempt = this.currentAttempt;
+        // If syncOnlyAccepted is explicitly set to false in settings
         const resultContainer = node.closest('div[class*="result"], div[class*="submission"], div.flex') || node.parentElement;
         this.state = SubmissionState.FAILED;
         this.cleanupWaitingState();
@@ -351,7 +415,62 @@ export class SubmissionDetector {
         this.currentAttempt = null;
         return;
       }
+
+      // 5. Terminal Accepted state
+      if (classification === 'ACCEPTED') {
+        PerformanceProfiler.mark('t2_acceptedDetected');
+        if (!attempt.observedStatuses.has('Accepted')) {
+          attempt.observedStatuses.add('Accepted');
+          console.log('[Leet-Vault] Current result: Accepted');
+        }
+        console.log('[Leet-Vault] Current submission accepted');
+        console.log('[Leet-Vault] Opening save popup');
+
+        const resultContainer = node.closest('div[class*="result"], div[class*="submission"], div.flex') || node.parentElement;
+
+        this.state = SubmissionState.ACCEPTED;
+        this.cleanupWaitingState();
+
+        // Synthesize submission using the EXACT captured source snapshot from submit click
+        const submission = LeetCodeParser.parseAcceptedSubmission(
+          attempt.sourceSnapshot,
+          resultContainer
+        );
+
+        if (submission) {
+          this.onAcceptedCallback(submission);
+        }
+
+        this.state = SubmissionState.IDLE;
+        this.currentAttempt = null;
+        return;
+      }
     }
+  }
+
+  /**
+   * Determines if a DOM element is part of a historical table or submission list.
+   */
+  private isHistoricalElement(node: Element): boolean {
+    let curr: Element | null = node;
+    while (curr) {
+      const className = (curr.className || '').toString();
+      const tagName = (curr.tagName || '').toUpperCase();
+      if (
+        className.includes('status-column') ||
+        className.includes('submission-list') ||
+        className.includes('history') ||
+        tagName === 'TABLE' ||
+        tagName === 'TBODY' ||
+        tagName === 'TR' ||
+        tagName === 'TD' ||
+        (typeof curr.getAttribute === 'function' && curr.getAttribute('data-cypress') === 'submission-history')
+      ) {
+        return true;
+      }
+      curr = curr.parentElement;
+    }
+    return false;
   }
 
   /**
@@ -385,24 +504,43 @@ export class SubmissionDetector {
   }
 
   /**
-   * Captures signatures of all currently existing result badges on page
-   * to ensure older submissions are not mistakenly identified as the new result.
+   * Captures references and signatures of all currently existing result elements at T0
+   * to ensure older submissions are never identified as the new result.
    */
-  private captureExistingResultSignatures(): Set<string> {
+  private captureExistingState(): {
+    elements: Set<Element>;
+    texts: Map<Element, string>;
+    signatures: Set<string>;
+  } {
+    const elements = new Set<Element>();
+    const texts = new Map<Element, string>();
     const signatures = new Set<string>();
-    const existing = document.querySelectorAll(
-      'span[data-e2e-locator="submission-result"], div[data-e2e-locator="submission-result"], div[data-cy="submission-result"], span[class*="text-green"], div[class*="text-green"]'
-    );
+
+    if (typeof document === 'undefined') {
+      return { elements, texts, signatures };
+    }
+
+    const existing = document.querySelectorAll(RESULT_CANDIDATE_SELECTORS);
     for (const el of Array.from(existing)) {
+      elements.add(el);
+      const text = (el.textContent || '').trim();
+      texts.set(el, text);
       signatures.add(this.getNodeSignature(el as HTMLElement));
     }
-    return signatures;
+
+    return { elements, texts, signatures };
   }
 
   private getNodeSignature(node: HTMLElement): string {
     const text = (node.textContent || '').trim();
-    const className = node.className || '';
-    const rect = node.getBoundingClientRect ? node.getBoundingClientRect() : { top: 0, left: 0 };
-    return `${text}_${className}_${Math.round(rect.top)}_${Math.round(rect.left)}`;
+    const className = (node.className || '').toString();
+    const locator =
+      (typeof node.getAttribute === 'function' &&
+        (node.getAttribute('data-e2e-locator') ||
+          node.getAttribute('data-cy') ||
+          node.getAttribute('data-cypress'))) ||
+      '';
+    const tagName = (node.tagName || '').toUpperCase();
+    return `${tagName}_${locator}_${className}_${text}`;
   }
 }
