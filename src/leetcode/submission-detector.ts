@@ -173,11 +173,14 @@ export class SubmissionDetector {
     try {
       const sourceSnapshot = await LeetCodeParser.captureSourceSnapshot();
       PerformanceProfiler.mark('t1_sourceCaptured');
-      const safeSnapshot = sourceSnapshot && sourceSnapshot.trim().length > 0 ? sourceSnapshot : '';
-
+      const safeSnapshot = (sourceSnapshot && sourceSnapshot.length > 0) ? sourceSnapshot : '';
+      const snapshotLines = safeSnapshot ? safeSnapshot.split('\n').length : 0;
+      const codeHash = computeCodeHash(safeSnapshot);
+      console.log(
+        `[Leet-Vault Pipeline Diagnostics] submission snapshot length: ${safeSnapshot.length}, submission snapshot line count: ${snapshotLines}, source hash: ${codeHash}`
+      );
       const problem = LeetCodeProblemParser.extractProblemDetails();
       const language = LeetCodeParser.extractLanguage();
-      const codeHash = computeCodeHash(safeSnapshot);
       const submittedAt = Date.now();
 
       // Snapshot any existing result badges on the page to ignore stale Accepted cards

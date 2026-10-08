@@ -28,9 +28,29 @@
         "https://leetcode.com/*"
       ],
       "js": [
+        "content/page-bridge.js"
+      ],
+      "world": "MAIN",
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://leetcode.com/*"
+      ],
+      "js": [
         "content/leetcode-content.js"
       ],
       "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "content/page-bridge.js"
+      ],
+      "matches": [
+        "https://leetcode.com/*"
+      ]
     }
   ],
   "action": {

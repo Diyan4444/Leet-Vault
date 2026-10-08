@@ -16,6 +16,7 @@ import { ReadmeGenerator, SolutionRowData } from './readme-generator';
 import { formatProblemFolderName, sanitizeRootFolder } from '../utils/sanitize';
 import { STORAGE_KEYS } from '../shared/constants';
 import { PerformanceProfiler } from '../utils/profiler';
+import { computeCodeHash } from '../utils/hashing';
 
 export class SyncManager {
   /**
@@ -238,6 +239,11 @@ export class SyncManager {
     try {
       // 5. Commit Solution File
       PerformanceProfiler.mark('t10_solutionUploadStart');
+      const uploadLines = code ? code.split('\n').length : 0;
+      const uploadHash = computeCodeHash(code);
+      console.log(
+        `[Leet-Vault Pipeline Diagnostics] GitHub upload content length: ${code.length}, GitHub upload line count: ${uploadLines}, source hash: ${uploadHash}`
+      );
       const targetSha = overwriteSha || (existingFile ? existingFile.sha : undefined);
       const commitRes = await GitHubContentsService.putFile(
         token,
