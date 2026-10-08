@@ -6,6 +6,27 @@ export class GitHubOAuthClient {
   public static DEFAULT_BROKER_URL = 'https://leet-git-hub.vercel.app';
 
   /**
+   * Validates broker URL against approved origins (HTTPS, matching default broker host, or localhost in dev).
+   */
+  static isValidBrokerUrl(brokerUrl: string): boolean {
+    if (!brokerUrl || typeof brokerUrl !== 'string') return false;
+    try {
+      const parsed = new URL(brokerUrl);
+      if (parsed.protocol === 'https:') {
+        if (parsed.hostname.endsWith('.vercel.app') || parsed.hostname === new URL(this.DEFAULT_BROKER_URL).hostname) {
+          return true;
+        }
+      }
+      if (parsed.protocol === 'http:' && (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1')) {
+        return true;
+      }
+    } catch {
+      return false;
+    }
+    return false;
+  }
+
+  /**
    * Starts OAuth authorization flow via chrome.identity.launchWebAuthFlow
    */
   static async startOAuthFlow(
@@ -19,7 +40,8 @@ export class GitHubOAuthClient {
     }
 
     const settings = await StorageService.getSettings();
-    const brokerUrl = (customBrokerUrl || settings.oauthBrokerUrl || this.DEFAULT_BROKER_URL).replace(/\/+$/, '');
+    const candidateUrl = (customBrokerUrl || settings.oauthBrokerUrl || this.DEFAULT_BROKER_URL).replace(/\/+$/, '');
+    const brokerUrl = this.isValidBrokerUrl(candidateUrl) ? candidateUrl : this.DEFAULT_BROKER_URL;
     const redirectUri = chrome.identity.getRedirectURL(); // e.g. https://<ext-id>.chromiumapp.org/
 
     // Generate cryptographically secure random state nonce for CSRF validation
@@ -62,41 +84,42 @@ export class GitHubOAuthClient {
               return;
             }
 
-            // CRITICAL: Strict CSRF State Validation
-            if (returnedState && returnedState !== state) {
+            // CRITICAL: Strict CSRF State Validation - nonce must be present and match exactly
+            if (!returnedState || returnedState !== state) {
               resolve({
                 success: false,
-                error: 'OAuth security verification failed: State nonce mismatch. Possible CSRF interception.',
+                error: 'OAuth security verification failed: Missing or invalid state nonce. Possible CSRF interception.',
               });
               return;
             }
 
-            let token: string | null = null;
             const oneTimeCode = urlObj?.searchParams.get('code');
-
-            if (oneTimeCode) {
-              // Secure POST exchange for token using one-time opaque code
-              const tokenResponse = await fetch(`${brokerUrl}/api/token`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ code: oneTimeCode }),
+            if (!oneTimeCode) {
+              resolve({
+                success: false,
+                error: 'OAuth verification failed: No authorization exchange code received from broker.',
               });
-
-              if (tokenResponse.ok) {
-                const tokenJson = await tokenResponse.json();
-                token = tokenJson.access_token;
-              } else {
-                const errData = await tokenResponse.json().catch(() => ({}));
-                resolve({
-                  success: false,
-                  error: errData.error || 'Failed to exchange one-time OAuth code for access token.',
-                });
-                return;
-              }
-            } else {
-              // Backward compatibility fallback for legacy brokers
-              token = this.extractTokenFromUrl(redirectResultUrl);
+              return;
             }
+
+            // Secure POST exchange for token using one-time opaque ticket
+            const tokenResponse = await fetch(`${brokerUrl}/api/token`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ code: oneTimeCode }),
+            });
+
+            if (!tokenResponse.ok) {
+              const errData = await tokenResponse.json().catch(() => ({}));
+              resolve({
+                success: false,
+                error: errData.error || 'Failed to exchange one-time OAuth code for access token.',
+              });
+              return;
+            }
+
+            const tokenJson = await tokenResponse.json();
+            const token = tokenJson?.access_token;
 
             if (!token) {
               resolve({ success: false, error: 'No access token received from GitHub authorization.' });
@@ -120,26 +143,5 @@ export class GitHubOAuthClient {
         }
       );
     });
-  }
-
-  /**
-   * Safely extracts access token from redirect URL (query params or hash fragments)
-   */
-  static extractTokenFromUrl(targetUrl: string): string | null {
-    try {
-      const url = new URL(targetUrl);
-      const paramToken = url.searchParams.get('access_token');
-      if (paramToken) return paramToken;
-
-      if (url.hash) {
-        const hashParams = new URLSearchParams(url.hash.replace(/^#/, ''));
-        const hashToken = hashParams.get('access_token');
-        if (hashToken) return hashToken;
-      }
-    } catch {
-      const match = targetUrl.match(/[?&#]access_token=([^&#]+)/);
-      if (match) return decodeURIComponent(match[1]);
-    }
-    return null;
   }
 }

@@ -39,9 +39,21 @@ export class SubmissionDetector {
   private navigationChecker: any = null;
   private currentProblemSlug: string | null = null;
   private hasSeenJudging: boolean = false;
+  private syncOnlyAccepted: boolean = true;
 
-  constructor(onAccepted: SubmissionCallback) {
+  constructor(onAccepted: SubmissionCallback, options?: { syncOnlyAccepted?: boolean }) {
     this.onAcceptedCallback = onAccepted;
+    if (options?.syncOnlyAccepted !== undefined) {
+      this.syncOnlyAccepted = options.syncOnlyAccepted;
+    }
+  }
+
+  setSyncOnlyAccepted(val: boolean): void {
+    this.syncOnlyAccepted = val;
+  }
+
+  getSyncOnlyAccepted(): boolean {
+    return this.syncOnlyAccepted;
   }
 
   /**
@@ -307,9 +319,31 @@ export class SubmissionDetector {
         text === 'Output Limit Exceeded';
 
       if (isFailed) {
-        console.log(`[LeetCode Sync] Submission failed with status: ${text}. No popup shown.`);
+        if (this.syncOnlyAccepted) {
+          console.log(`[LeetCode Sync] Submission failed with status: ${text}. No popup shown.`);
+          this.state = SubmissionState.FAILED;
+          this.cleanupWaitingState();
+          this.state = SubmissionState.IDLE;
+          this.currentAttempt = null;
+          return;
+        }
+
+        // If syncOnlyAccepted is false, allow capturing failed submission
+        const attempt = this.currentAttempt;
+        const resultContainer = node.closest('div[class*="result"], div[class*="submission"], div.flex') || node.parentElement;
         this.state = SubmissionState.FAILED;
         this.cleanupWaitingState();
+
+        const submission = LeetCodeParser.parseAcceptedSubmission(
+          attempt.sourceSnapshot,
+          resultContainer,
+          text as any
+        );
+
+        if (submission) {
+          this.onAcceptedCallback(submission);
+        }
+
         this.state = SubmissionState.IDLE;
         this.currentAttempt = null;
         return;

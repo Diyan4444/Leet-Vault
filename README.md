@@ -1,4 +1,4 @@
-# LeetCode → GitHub Multi-Solution Sync
+# Leet-Vault
 
 A production-ready Chrome Extension (Manifest V3) that automatically syncs accepted LeetCode solutions to your chosen GitHub repository while enabling **unlimited named solutions for the exact same problem**.
 
@@ -63,8 +63,8 @@ npm run build
 1. Open Chrome and navigate to `chrome://extensions/`.
 2. Enable **Developer mode** toggle in the top-right corner.
 3. Click the **Load unpacked** button.
-4. Select the `dist/` directory inside this repository (`c:\Users\Diyan\Desktop\Leet=Github\dist`).
-5. Pin **LeetCode → GitHub Multi-Solution Sync** to your Chrome toolbar.
+4. Select the `dist/` directory inside this repository (e.g. `Leet-Vault/dist`).
+5. Pin **Leet-Vault** to your Chrome toolbar.
 
 ---
 

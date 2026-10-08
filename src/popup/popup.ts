@@ -78,6 +78,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   });
 
+  function applyTheme(theme?: 'light' | 'dark' | 'system') {
+    if (theme === 'dark' || theme === 'light') {
+      document.documentElement.setAttribute('data-theme', theme);
+    } else {
+      document.documentElement.removeAttribute('data-theme');
+    }
+  }
+
   const renderStatus = () => {
     chrome.runtime.sendMessage(
       { type: MESSAGES.GET_STATUS },
@@ -90,6 +98,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         recentSolutions: SyncHistoryItem[];
         pendingQueue?: PendingQueueItem[];
       }) => {
+        if (response?.settings?.theme) {
+          applyTheme(response.settings.theme);
+        }
+
         if (chrome.runtime.lastError || !response || !response.isConnected) {
           connectedView.style.display = 'none';
           disconnectedView.style.display = 'block';

@@ -144,7 +144,7 @@ export class SolutionModal {
       <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px;">
         <div>
           <div style="font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #2563eb;">
-            LeetCode → GitHub Sync
+            Leet-Vault
           </div>
           <h2 style="margin: 4px 0 2px 0; font-size: 18px; font-weight: 700; color: #0f172a;">
             ${safeTitle}
@@ -486,7 +486,7 @@ export class SolutionModal {
 
     PerformanceProfiler.mark('t15_successUiDone');
     const profile = PerformanceProfiler.finalizeReport();
-    console.log('[LeetCode GitHub Sync] Performance Profile:', profile);
+    console.log('[Leet-Vault] Performance Profile:', profile);
 
     // Automatically close after 1 second so the user never has to scroll to the cross button
     this.autoCloseTimer = setTimeout(() => {

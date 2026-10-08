@@ -209,23 +209,21 @@ describe('Authoritative Repository Write Access Verification', () => {
   });
 });
 
-describe('GitHubOAuthClient URL parsing and token extraction', () => {
-  it('extracts token from hash fragment', () => {
-    const url = 'https://abcdefghijklmnopqrstuvwxyz.chromiumapp.org/#access_token=gho_hash1234567890&token_type=bearer';
-    const token = GitHubOAuthClient.extractTokenFromUrl(url);
-    expect(token).toBe('gho_hash1234567890');
+describe('GitHubOAuthClient broker URL validation and security', () => {
+  it('approves trusted https vercel.app and default broker endpoints', () => {
+    expect(GitHubOAuthClient.isValidBrokerUrl('https://leet-git-hub.vercel.app')).toBe(true);
+    expect(GitHubOAuthClient.isValidBrokerUrl('https://custom-broker.vercel.app')).toBe(true);
   });
 
-  it('extracts token from query parameters', () => {
-    const url = 'https://abcdefghijklmnopqrstuvwxyz.chromiumapp.org/?access_token=gho_query1234567890&state=xyz';
-    const token = GitHubOAuthClient.extractTokenFromUrl(url);
-    expect(token).toBe('gho_query1234567890');
+  it('approves localhost and 127.0.0.1 for local development', () => {
+    expect(GitHubOAuthClient.isValidBrokerUrl('http://localhost:3000')).toBe(true);
+    expect(GitHubOAuthClient.isValidBrokerUrl('http://127.0.0.1:3000')).toBe(true);
   });
 
-  it('returns null when no token is present', () => {
-    const url = 'https://abcdefghijklmnopqrstuvwxyz.chromiumapp.org/?error=access_denied';
-    const token = GitHubOAuthClient.extractTokenFromUrl(url);
-    expect(token).toBeNull();
+  it('rejects untrusted domains and insecure http schemes', () => {
+    expect(GitHubOAuthClient.isValidBrokerUrl('http://malicious-site.com')).toBe(false);
+    expect(GitHubOAuthClient.isValidBrokerUrl('https://evil-phishing.com')).toBe(false);
+    expect(GitHubOAuthClient.isValidBrokerUrl('')).toBe(false);
   });
 });
 

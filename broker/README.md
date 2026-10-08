@@ -1,6 +1,6 @@
-# LeetCode → GitHub OAuth Broker
+# Leet-Vault OAuth Broker
 
-This directory contains the secure backend OAuth Broker for the LeetCode → GitHub Multi-Solution Sync Chrome Extension.
+This directory contains the secure backend OAuth Broker for the Leet-Vault Chrome Extension.
 
 ## Why this is required
 
@@ -10,8 +10,18 @@ Google Chrome extensions execute entirely on the client's machine, meaning **cli
 This minimal broker:
 1. Receives the authorization request from the Chrome Extension.
 2. Directs the user to GitHub's authorization consent screen.
-3. Securely exchanges the temporary `code` for an `access_token` using `GITHUB_CLIENT_SECRET` stored in secure server environment variables.
-4. Redirects the user back to the Chrome Extension redirect URL (`https://<extension-id>.chromiumapp.org/`) with the resulting access token.
+3. Securely exchanges the temporary GitHub code for an `access_token` using `GITHUB_CLIENT_SECRET` stored in secure server environment variables.
+4. Issues a stateless, tamper-proof AES-256-GCM encrypted one-time exchange ticket (60-second TTL) back to the authorized Chrome Extension redirect URL (`https://<extension-id>.chromiumapp.org/`).
+5. Verifies the ticket on `POST /api/token` and returns the access token. Fully stateless and serverless-safe across all Vercel/lambda instances without in-memory maps or external database.
+
+---
+
+## Environment Variables
+
+- `GITHUB_CLIENT_ID`: Your GitHub OAuth App Client ID (Required)
+- `GITHUB_CLIENT_SECRET`: Your GitHub OAuth App Client Secret (Required)
+- `ALLOWED_EXTENSION_IDS`: Optional comma-separated list of authorized Chrome extension IDs (e.g. `abcdefghijklmnopqrstuvwxyzabcdef`). In production, only listed extension IDs or valid 32-character extension IDs are allowed.
+- `NODE_ENV`: Set to `production` in production environments (disables localhost redirect/CORS allowances).
 
 ---
 
@@ -25,6 +35,7 @@ This minimal broker:
 3. Set Environment Variables in your Vercel Project Settings:
    - `GITHUB_CLIENT_ID`: Your GitHub OAuth App Client ID
    - `GITHUB_CLIENT_SECRET`: Your GitHub OAuth App Client Secret
+   - `ALLOWED_EXTENSION_IDS`: Your extension ID(s)
 4. Deploy using `vercel`.
 
 ### Option 2: Cloudflare Workers
@@ -36,6 +47,7 @@ This minimal broker:
 ```bash
 export GITHUB_CLIENT_ID=your_client_id
 export GITHUB_CLIENT_SECRET=your_client_secret
+export ALLOWED_EXTENSION_IDS=your_extension_id
 export PORT=3000
 node broker/index.js
 ```

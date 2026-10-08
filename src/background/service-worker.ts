@@ -9,7 +9,7 @@ import { SyncRequest } from '../shared/types';
 // Handle Extension Lifecycle
 if (typeof chrome !== 'undefined' && chrome.runtime?.onInstalled) {
   chrome.runtime.onInstalled.addListener(async (details) => {
-    console.log('[LeetCode GitHub Sync] Extension installed/updated:', details.reason);
+    console.log('[Leet-Vault] Extension installed/updated:', details.reason);
     const settings = await StorageService.getSettings();
     await StorageService.saveSettings(settings);
 
@@ -171,7 +171,10 @@ if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
         }
 
         case MESSAGES.START_OAUTH_FLOW: {
-          const brokerUrl = message.payload?.brokerUrl;
+          const rawBrokerUrl = message.payload?.brokerUrl;
+          const brokerUrl = rawBrokerUrl && GitHubOAuthClient.isValidBrokerUrl(rawBrokerUrl)
+            ? rawBrokerUrl
+            : undefined;
           const authResult = await GitHubOAuthClient.startOAuthFlow(brokerUrl);
           sendResponse(authResult);
           break;

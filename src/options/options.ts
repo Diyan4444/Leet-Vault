@@ -31,9 +31,23 @@ document.addEventListener('DOMContentLoaded', async () => {
   const ownerOnlyToggle = document.getElementById('owner-only-toggle') as HTMLInputElement;
   const problemReadmeToggle = document.getElementById('problem-readme-toggle') as HTMLInputElement;
   const rootReadmeToggle = document.getElementById('root-readme-toggle') as HTMLInputElement;
+  const includeRuntimeToggle = document.getElementById('include-runtime-toggle') as HTMLInputElement;
+  const includeMemoryToggle = document.getElementById('include-memory-toggle') as HTMLInputElement;
   const themeSelect = document.getElementById('theme-select') as HTMLSelectElement;
   const saveSettingsBtn = document.getElementById('save-settings-btn') as HTMLButtonElement;
   const statusBanner = document.getElementById('status-banner') as HTMLElement;
+
+  function applyTheme(theme: 'light' | 'dark' | 'system') {
+    if (theme === 'dark' || theme === 'light') {
+      document.documentElement.setAttribute('data-theme', theme);
+    } else {
+      document.documentElement.removeAttribute('data-theme');
+    }
+  }
+
+  themeSelect?.addEventListener('change', () => {
+    applyTheme(themeSelect.value as any);
+  });
 
   let verifiedOwner = '';
   let verifiedRepo = '';
@@ -203,7 +217,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         ownerOnlyToggle.checked = !!settings.ownerOnlyMode;
         problemReadmeToggle.checked = settings.generateProblemReadme;
         rootReadmeToggle.checked = settings.updateRootReadme;
+        includeRuntimeToggle.checked = settings.includeRuntimeInReadme !== false;
+        includeMemoryToggle.checked = settings.includeMemoryInReadme !== false;
         themeSelect.value = settings.theme || 'system';
+        applyTheme(settings.theme || 'system');
 
         renderPendingQueue(response?.pendingQueue || []);
       }
@@ -335,6 +352,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       ownerOnlyMode: ownerOnlyToggle.checked,
       generateProblemReadme: problemReadmeToggle.checked,
       updateRootReadme: rootReadmeToggle.checked,
+      includeRuntimeInReadme: includeRuntimeToggle.checked,
+      includeMemoryInReadme: includeMemoryToggle.checked,
       theme: themeSelect.value as 'light' | 'dark' | 'system',
     };
 

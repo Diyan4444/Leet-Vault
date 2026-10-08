@@ -4,7 +4,7 @@ Single source of truth for Chrome Web Store publishing, permissions justificatio
 
 ## 1. Store Listing Metadata
 
-- **Extension Name:** LeetCode → GitHub Multi-Solution Sync
+- **Extension Name:** Leet-Vault
 - **Summary (Short Description, max 132 chars):** Sync accepted LeetCode solutions to GitHub automatically with unlimited named solutions per problem.
 - **Category:** Productivity / Developer Tools
 - **Default Language:** English
@@ -12,7 +12,7 @@ Single source of truth for Chrome Web Store publishing, permissions justificatio
 ### Detailed Description
 
 ```text
-Streamline your DSA practice with LeetCode → GitHub Multi-Solution Sync.
+Streamline your DSA practice with Leet-Vault.
 
 Unlike traditional sync extensions that overwrite your previous solution or force generic names, this extension empowers you to save unlimited distinct solutions for the exact same problem under clear, custom names.
 

@@ -248,6 +248,29 @@ describe('Pending Sync Queue and Retry Actions', () => {
     expect(queueAfter[0].error).toContain('Selected branch "main" does not exist');
   });
 
+  it('updates existing queue item without spawning duplicate when retry encounters temporary error', async () => {
+    const queueItem: PendingQueueItem = {
+      id: 'queue_retry_temp_1',
+      createdAt: Date.now(),
+      request: mockRequest,
+      error: 'Previous temporary network error',
+      retryCount: 0,
+    };
+    mockStorage[STORAGE_KEYS.PENDING_QUEUE] = [queueItem];
+
+    // Mock API failing with temporary network error
+    global.fetch = vi.fn().mockRejectedValue(new Error('Failed to fetch (network offline)'));
+
+    const result = await SyncManager.retryPendingItem('queue_retry_temp_1');
+    expect(result.success).toBe(false);
+
+    const queueAfter = await StorageService.getPendingQueue();
+    expect(queueAfter.length).toBe(1);
+    expect(queueAfter[0].id).toBe('queue_retry_temp_1');
+    expect(queueAfter[0].retryCount).toBe(1);
+    expect(queueAfter[0].error).toContain('Failed to fetch');
+  });
+
   it('removes item from queue when manually cleared', async () => {
     mockStorage[STORAGE_KEYS.PENDING_QUEUE] = [
       { id: 'item_to_remove', createdAt: Date.now(), request: mockRequest, retryCount: 0 },

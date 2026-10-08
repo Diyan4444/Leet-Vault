@@ -227,7 +227,8 @@ export class LeetCodeParser {
    */
   static parseAcceptedSubmission(
     codeSnapshot: string | null,
-    targetContainer?: Element | null
+    targetContainer?: Element | null,
+    status: LeetCodeSubmission['status'] = 'Accepted'
   ): LeetCodeSubmission | null {
     const problem = LeetCodeProblemParser.extractProblemDetails();
     if (!problem) return null;
@@ -243,7 +244,7 @@ export class LeetCodeParser {
       problem,
       code,
       language: resolvedLang,
-      status: 'Accepted',
+      status,
       runtime,
       memory,
       timestamp: Date.now(),

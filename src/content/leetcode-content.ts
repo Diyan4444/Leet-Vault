@@ -15,7 +15,15 @@ class LeetCodeContentApp {
   }
 
   init(): void {
-    console.log('[LeetCode GitHub Sync] Content script active on LeetCode.');
+    console.log('[Leet-Vault] Content script active on LeetCode.');
+
+    // Fetch initial settings to configure detector
+    chrome.runtime.sendMessage({ type: MESSAGES.GET_SETTINGS }, (response) => {
+      if (!chrome.runtime.lastError && response?.settings) {
+        this.detector.setSyncOnlyAccepted(response.settings.syncOnlyAccepted ?? true);
+      }
+    });
+
     this.detector.start();
 
     // Listen to background messages if any
@@ -29,7 +37,7 @@ class LeetCodeContentApp {
   }
 
   private async handleAcceptedSubmission(submission: LeetCodeSubmission): Promise<void> {
-    console.log('[LeetCode GitHub Sync] Accepted submission detected for:', submission.problem.title);
+    console.log('[Leet-Vault] Submission detected for:', submission.problem.title, `(${submission.status})`);
 
     // 1. Authoritative check: Is GitHub connected and repository verified?
     const status = await new Promise<{
@@ -45,6 +53,12 @@ class LeetCodeContentApp {
         }
       });
     });
+
+    // Enforce syncOnlyAccepted setting
+    if (status.settings && status.settings.syncOnlyAccepted && submission.status !== 'Accepted') {
+      console.log('[Leet-Vault] Non-accepted submission ignored (syncOnlyAccepted is enabled).');
+      return;
+    }
 
     if (!status.isConnected || !status.isRepoVerified) {
       if (this.currentModal) this.currentModal.destroy();
@@ -109,7 +123,7 @@ class LeetCodeContentApp {
 
       // If no filename conflict and no duplicate code, auto-commit directly!
       if (!existingFile && !isDuplicateCode) {
-        console.log('[LeetCode GitHub Sync] Auto-syncing solution with default name...');
+        console.log('[Leet-Vault] Auto-syncing solution with default name...');
         const syncResult = await new Promise<SyncResult>((resolve) => {
           chrome.runtime.sendMessage(
             {

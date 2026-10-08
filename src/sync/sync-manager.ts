@@ -91,7 +91,10 @@ export class SyncManager {
    * 7. Maintain repository root README.md
    * 8. Save to sync history
    */
-  static async syncSolution(request: SyncRequest): Promise<SyncResult> {
+  static async syncSolution(
+    request: SyncRequest,
+    options?: { isRetry?: boolean }
+  ): Promise<SyncResult> {
     const settings = await StorageService.getSettings();
     const user = await StorageService.getGitHubUser();
     const token = settings.githubToken;
@@ -273,7 +276,11 @@ export class SyncManager {
             dirState,
             request,
             fileName,
-            solutionName
+            solutionName,
+            {
+              includeRuntime: settings.includeRuntimeInReadme,
+              includeMemory: settings.includeMemoryInReadme,
+            }
           )
             .then(() => {
               problemReadmeUpdated = true;
@@ -366,18 +373,20 @@ export class SyncManager {
         errMsg.includes('rate limit');
 
       if (isTemporary) {
-        // Enqueue into pending queue for retry
-        await StorageService.enqueuePendingItem({
-          id: `queue_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-          createdAt: Date.now(),
-          request,
-          error: errMsg,
-          retryCount: 0,
-          repositoryOwner: owner,
-          repositoryName: repo,
-          branch: targetBranch,
-          lastAttemptAt: Date.now(),
-        });
+        if (!options?.isRetry) {
+          // Enqueue into pending queue for retry
+          await StorageService.enqueuePendingItem({
+            id: `queue_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+            createdAt: Date.now(),
+            request,
+            error: errMsg,
+            retryCount: 0,
+            repositoryOwner: owner,
+            repositoryName: repo,
+            branch: targetBranch,
+            lastAttemptAt: Date.now(),
+          });
+        }
 
         return {
           success: false,
@@ -385,7 +394,9 @@ export class SyncManager {
           filePath: fullFilePath,
           conflictType: 'GITHUB_ERROR',
           queuedForRetry: true,
-          error: `Temporary GitHub error: ${errMsg}. Solution has been safely saved to Pending Queue.`,
+          error: options?.isRetry
+            ? `Retry failed: ${errMsg}`
+            : `Temporary GitHub error: ${errMsg}. Solution has been safely saved to Pending Queue.`,
         };
       }
 
@@ -410,7 +421,8 @@ export class SyncManager {
     dirState: ProblemDirectoryState,
     request: SyncRequest,
     currentFileName: string,
-    currentSolutionName: string
+    currentSolutionName: string,
+    options?: { includeRuntime?: boolean; includeMemory?: boolean }
   ): Promise<void> {
     try {
       const readmePath = `${dirState.folderPath}/README.md`;
@@ -440,14 +452,11 @@ export class SyncManager {
         memory: request.submission.memory,
       });
 
-      const readmeMd = ReadmeGenerator.generateProblemReadme(
-        request.submission.problem,
-        existingSolutions
-      );
-
-      // Check for current readme sha
+      // Retrieve existing README content to preserve manual notes and SHA
       let currentSha = dirState.readmeSha;
-      if (!currentSha && dirState.readmeExists) {
+      let existingContent: string | undefined = undefined;
+
+      if (dirState.readmeExists || currentSha) {
         const curFile = await GitHubContentsService.getFileContent(
           token,
           owner,
@@ -457,10 +466,23 @@ export class SyncManager {
         );
         if (curFile) {
           currentSha = curFile.sha;
-          if (curFile.content.trim() === readmeMd.trim()) {
-            return; // Skip write: content is identical
-          }
+          existingContent = curFile.content;
         }
+      }
+
+      const readmeMd = ReadmeGenerator.generateProblemReadme(
+        request.submission.problem,
+        existingSolutions,
+        {
+          includeRuntime: options?.includeRuntime,
+          includeMemory: options?.includeMemory,
+          existingContent,
+        }
+      );
+
+      // Skip write if problem README content is completely unchanged
+      if (existingContent && existingContent.trim() === readmeMd.trim()) {
+        return;
       }
 
       await GitHubContentsService.putFile(
@@ -566,7 +588,7 @@ export class SyncManager {
       };
     }
 
-    const result = await this.syncSolution(item.request);
+    const result = await this.syncSolution(item.request, { isRetry: true });
     if (result.success) {
       await StorageService.removePendingItem(id);
     } else {
@@ -632,7 +654,7 @@ export class SyncManager {
 
       processed++;
       try {
-        const result = await this.syncSolution(item.request);
+        const result = await this.syncSolution(item.request, { isRetry: true });
         if (result.success) {
           succeeded++;
           // Remove from persistent queue

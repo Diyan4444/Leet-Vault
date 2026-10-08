@@ -3,17 +3,16 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Settings — LeetCode GitHub Sync</title>
+  <title>Settings — Leet-Vault</title>
+  <link rel="icon" type="image/png" href="/icons/icon-32.png">
   <link rel="stylesheet" href="options.css">
 </head>
 <body>
   <div class="layout-container">
     <aside class="sidebar">
       <div class="sidebar-header">
-        <svg class="brand-icon" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path>
-        </svg>
-        <span class="sidebar-title">LeetCode Sync</span>
+        <img src="/icons/icon-32.png" width="24" height="24" alt="Leet-Vault" style="border-radius: 6px;">
+        <span class="sidebar-title">Leet-Vault</span>
       </div>
       <nav class="nav-links">
         <a href="#github-section" class="nav-link active">GitHub Connection</a>
@@ -167,6 +166,22 @@
             <span class="field-hint">Safely updates the overview table in the root README without touching manual notes.</span>
           </div>
           <input type="checkbox" id="root-readme-toggle" checked />
+        </div>
+
+        <div class="toggle-group">
+          <div class="toggle-info">
+            <label class="toggle-label" for="include-runtime-toggle">Include runtime in problem README</label>
+            <span class="field-hint">Adds the submission execution time column to the problem solutions table.</span>
+          </div>
+          <input type="checkbox" id="include-runtime-toggle" checked />
+        </div>
+
+        <div class="toggle-group">
+          <div class="toggle-info">
+            <label class="toggle-label" for="include-memory-toggle">Include memory in problem README</label>
+            <span class="field-hint">Adds the memory consumption column to the problem solutions table.</span>
+          </div>
+          <input type="checkbox" id="include-memory-toggle" checked />
         </div>
       </section>
 

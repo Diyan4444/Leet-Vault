@@ -270,6 +270,41 @@ describe('SubmissionDetector State Machine & Submit Prerequisite', () => {
     expect(acceptedCallback).not.toHaveBeenCalled();
   });
 
+  it('triggers callback on failed submission when syncOnlyAccepted is configured to false', async () => {
+    detector.setSyncOnlyAccepted(false);
+
+    const editor = (global as any).document.createElement('div');
+    editor.className = 'monaco-editor';
+    const textarea = (global as any).document.createElement('textarea');
+    textarea.value = 'class Solution { public: int test() { return 0; } };';
+    editor.appendChild(textarea);
+    mockBody.appendChild(editor);
+
+    const submitBtn = (global as any).document.createElement('button');
+    submitBtn.textContent = 'Submit';
+    mockBody.appendChild(submitBtn);
+
+    detector.start();
+    submitBtn.click();
+    await new Promise((r) => setTimeout(r, 10));
+
+    // Simulate Wrong Answer
+    const resultDiv = (global as any).document.createElement('div');
+    resultDiv.setAttribute('data-e2e-locator', 'submission-result');
+    resultDiv.textContent = 'Wrong Answer';
+    mockBody.appendChild(resultDiv);
+
+    (detector as any).checkForCurrentSubmissionResult();
+
+    expect(detector.getState()).toBe(SubmissionState.IDLE);
+    expect(acceptedCallback).toHaveBeenCalledTimes(1);
+    expect(acceptedCallback).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'Wrong Answer',
+      })
+    );
+  });
+
   it('transitions to ACCEPTED and triggers callback with exact captured source on new Accepted result', async () => {
     const fullSource = `#pragma GCC optimize("O3")\n#include <iostream>\n\n// Helper before Solution\nvoid helper() {}\n\nclass Solution {\npublic:\n    vector<int> sortArray(vector<int>& nums) {\n        return nums;\n    }\n};\n\n// Code after Solution\nint test() { return 42; }`;
 

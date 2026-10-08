@@ -47,4 +47,73 @@ describe('ReadmeGenerator', () => {
     expect(updated).toContain('| 912 | [Sort an Array](./0912-sort-an-array) | Medium | 5 |');
     expect(updated).not.toContain('old table');
   });
+
+  it('dynamically excludes Runtime and Memory columns when toggled off', () => {
+    const mdNoRuntime = ReadmeGenerator.generateProblemReadme(problem, solutions, {
+      includeRuntime: false,
+      includeMemory: true,
+    });
+    expect(mdNoRuntime).toContain('| # | Solution | File | Language | Memory |');
+    expect(mdNoRuntime).not.toContain('| Runtime |');
+    expect(mdNoRuntime).toContain('| 1 | Heap Sort | [heap-sort.cpp](./heap-sort.cpp) | C++ | 20 MB |');
+
+    const mdNoBoth = ReadmeGenerator.generateProblemReadme(problem, solutions, {
+      includeRuntime: false,
+      includeMemory: false,
+    });
+    expect(mdNoBoth).toContain('| # | Solution | File | Language |');
+    expect(mdNoBoth).not.toContain('| Runtime |');
+    expect(mdNoBoth).not.toContain('| Memory |');
+    expect(mdNoBoth).toContain('| 1 | Heap Sort | [heap-sort.cpp](./heap-sort.cpp) | C++ |');
+  });
+
+  it('preserves manual notes and custom sections in problem README', () => {
+    const existingReadme = `# 912. Sort an Array
+- **Difficulty:** Medium
+- **LeetCode Link:** [Sort an Array](https://leetcode.com/problems/sort-an-array/)
+
+<!-- LEETCODE-SOLUTIONS:START -->
+## Solutions
+| old table |
+<!-- LEETCODE-SOLUTIONS:END -->
+
+## Complexity Analysis & Notes
+- Quick sort pivot choice is randomized to avoid O(N^2) worst case.
+- Heap sort is guaranteed O(N log N).
+`;
+
+    const updated = ReadmeGenerator.generateProblemReadme(problem, solutions, {
+      existingContent: existingReadme,
+    });
+
+    expect(updated).toContain('## Complexity Analysis & Notes');
+    expect(updated).toContain('Quick sort pivot choice is randomized');
+    expect(updated).toContain('Heap sort is guaranteed O(N log N)');
+    expect(updated).toContain('| 1 | Heap Sort | [heap-sort.cpp](./heap-sort.cpp) | C++ | 12 ms | 20 MB |');
+    expect(updated).not.toContain('| old table |');
+  });
+
+  it('preserves manual notes even when older README has no marker tags', () => {
+    const legacyReadme = `# 912. Sort an Array
+- **Difficulty:** Medium
+
+## Solutions
+
+| # | Solution | File | Language | Runtime | Memory |
+|---|---|---|---|---|---|
+| 1 | Old Sol | [old.cpp](./old.cpp) | C++ | 10 ms | 10 MB |
+
+## My Custom Notes
+Remember to handle negative numbers in partition step!
+`;
+
+    const updated = ReadmeGenerator.generateProblemReadme(problem, solutions, {
+      existingContent: legacyReadme,
+    });
+
+    expect(updated).toContain('## My Custom Notes');
+    expect(updated).toContain('Remember to handle negative numbers');
+    expect(updated).toContain('| 1 | Heap Sort | [heap-sort.cpp](./heap-sort.cpp) | C++ | 12 ms | 20 MB |');
+    expect(updated).not.toContain('Old Sol');
+  });
 });

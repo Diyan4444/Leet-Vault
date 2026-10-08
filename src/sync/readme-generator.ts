@@ -15,16 +15,110 @@ function escapeMarkdownTableCell(value: string): string {
   return String(value).replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
 }
 
+export interface ProblemReadmeOptions {
+  includeRuntime?: boolean;
+  includeMemory?: boolean;
+  existingContent?: string;
+}
+
+export const PROBLEM_SOLUTIONS_START = '<!-- LEETCODE-SOLUTIONS:START -->';
+export const PROBLEM_SOLUTIONS_END = '<!-- LEETCODE-SOLUTIONS:END -->';
+
 export class ReadmeGenerator {
   /**
    * Generates or updates the problem-specific README.md.
-   * Preserves any manual notes written by the user if sections are separated,
-   * while rendering the structured Solutions table.
+   * Preserves any manual notes written by the user outside the solutions table,
+   * while rendering the structured Solutions table with configurable columns.
    */
   static generateProblemReadme(
     problem: LeetCodeProblem,
-    solutions: SolutionRowData[]
+    solutions: SolutionRowData[],
+    options?: ProblemReadmeOptions
   ): string {
+    const includeRuntime = options?.includeRuntime ?? true;
+    const includeMemory = options?.includeMemory ?? true;
+    const existingContent = options?.existingContent;
+
+    const headers = ['#', 'Solution', 'File', 'Language'];
+    if (includeRuntime) headers.push('Runtime');
+    if (includeMemory) headers.push('Memory');
+
+    const dividers = headers.map(() => '---');
+
+    let solutionsTable = `## Solutions\n\n`;
+    solutionsTable += `| ${headers.join(' | ')} |\n`;
+    solutionsTable += `| ${dividers.join(' | ')} |\n`;
+
+    solutions.forEach((sol, idx) => {
+      const num = idx + 1;
+      const solName = escapeMarkdownTableCell(sol.name || `Solution ${num}`);
+      const fileLink = `[${escapeMarkdownTableCell(sol.filename)}](./${sol.filename})`;
+      const lang = escapeMarkdownTableCell(sol.language || 'Unknown');
+
+      const row = [String(num), solName, fileLink, lang];
+      if (includeRuntime) {
+        row.push(escapeMarkdownTableCell(sol.runtime || '-'));
+      }
+      if (includeMemory) {
+        row.push(escapeMarkdownTableCell(sol.memory || '-'));
+      }
+      solutionsTable += `| ${row.join(' | ')} |\n`;
+    });
+
+    const markerBlock = `${PROBLEM_SOLUTIONS_START}\n${solutionsTable}\n${PROBLEM_SOLUTIONS_END}`;
+
+    if (existingContent && existingContent.trim()) {
+      // 1. If explicit solution markers exist in the document, replace only that section
+      if (
+        existingContent.includes(PROBLEM_SOLUTIONS_START) &&
+        existingContent.includes(PROBLEM_SOLUTIONS_END)
+      ) {
+        const regex = new RegExp(`${PROBLEM_SOLUTIONS_START}[\\s\\S]*?${PROBLEM_SOLUTIONS_END}`, 'm');
+        return existingContent.replace(regex, markerBlock);
+      }
+
+      // 2. If no markers exist but ## Solutions exists, preserve content before and after the table
+      const solutionsHeaderRegex = /##\s*Solutions/i;
+      const match = solutionsHeaderRegex.exec(existingContent);
+      if (match) {
+        const preamble = existingContent.slice(0, match.index).trimEnd();
+        const afterSolutionsHeader = existingContent.slice(match.index);
+
+        // Find end of old solutions table (scan past markdown table rows)
+        const lines = afterSolutionsHeader.split('\n');
+        let pastTableIndex = -1;
+        let seenTable = false;
+
+        for (let i = 0; i < lines.length; i++) {
+          const trimmed = lines[i].trim();
+          if (trimmed.startsWith('|') && trimmed.endsWith('|')) {
+            seenTable = true;
+          } else if (seenTable && trimmed !== '') {
+            pastTableIndex = i;
+            break;
+          }
+        }
+
+        let userNotes = '';
+        if (pastTableIndex !== -1) {
+          const remainingLines = lines.slice(pastTableIndex);
+          userNotes = remainingLines.join('\n').replace(/<!-- Generated automatically by Leet-Vault -->/g, '').replace(/<!-- Generated automatically by Leet=Github -->/g, '').trim();
+        }
+
+        let result = preamble ? `${preamble}\n\n${markerBlock}` : markerBlock;
+        if (userNotes) {
+          result += `\n\n${userNotes}`;
+        }
+        result += `\n\n<!-- Generated automatically by Leet-Vault -->\n`;
+        return result;
+      }
+
+      // 3. Fallback: preserve existing content as manual notes
+      const cleaned = existingContent.replace(/<!-- Generated automatically by Leet-Vault -->/g, '').replace(/<!-- Generated automatically by Leet=Github -->/g, '').trim();
+      return `${cleaned}\n\n${markerBlock}\n\n<!-- Generated automatically by Leet-Vault -->\n`;
+    }
+
+    // Fresh README generation
     const diffBadge = problem.difficulty
       ? `- **Difficulty:** ${escapeMarkdownTableCell(problem.difficulty)}\n`
       : '';
@@ -36,21 +130,7 @@ export class ReadmeGenerator {
     md += diffBadge;
     md += `- **LeetCode Link:** [${escapeMarkdownTableCell(problem.title)}](${problem.url})\n`;
     md += tagsLine;
-    md += `\n## Solutions\n\n`;
-    md += `| # | Solution | File | Language | Runtime | Memory |\n`;
-    md += `|---|---|---|---|---|---|\n`;
-
-    solutions.forEach((sol, idx) => {
-      const num = idx + 1;
-      const solName = escapeMarkdownTableCell(sol.name || `Solution ${num}`);
-      const fileLink = `[${escapeMarkdownTableCell(sol.filename)}](./${sol.filename})`;
-      const lang = escapeMarkdownTableCell(sol.language || 'Unknown');
-      const rt = escapeMarkdownTableCell(sol.runtime || '-');
-      const mem = escapeMarkdownTableCell(sol.memory || '-');
-      md += `| ${num} | ${solName} | ${fileLink} | ${lang} | ${rt} | ${mem} |\n`;
-    });
-
-    md += `\n<!-- Generated automatically by LeetCode → GitHub Multi-Solution Sync -->\n`;
+    md += `\n${markerBlock}\n\n<!-- Generated automatically by Leet-Vault -->\n`;
     return md;
   }
 

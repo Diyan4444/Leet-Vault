@@ -22,6 +22,28 @@
   }
 }
 
+:root[data-theme="dark"] {
+  --bg-color: #0f172a;
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+  --border-color: #334155;
+  --card-bg: #1e293b;
+  --primary: #3b82f6;
+  --primary-hover: #2563eb;
+  --success: #34d399;
+}
+
+:root[data-theme="light"] {
+  --bg-color: #ffffff;
+  --text-main: #0f172a;
+  --text-muted: #64748b;
+  --border-color: #e2e8f0;
+  --card-bg: #f8fafc;
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --success: #10b981;
+}
+
 body {
   margin: 0;
   padding: 0;
