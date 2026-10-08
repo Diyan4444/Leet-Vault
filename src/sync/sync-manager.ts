@@ -16,7 +16,10 @@ import { ReadmeGenerator, SolutionRowData } from './readme-generator';
 import { formatProblemFolderName, sanitizeRootFolder } from '../utils/sanitize';
 import { STORAGE_KEYS } from '../shared/constants';
 import { PerformanceProfiler } from '../utils/profiler';
+<<<<<<< HEAD
 import { computeCodeHash } from '../utils/hashing';
+=======
+>>>>>>> 71026eab6dc010bb78586627d22b26f34d0fd463
 
 export class SyncManager {
   /**
@@ -239,11 +242,14 @@ export class SyncManager {
     try {
       // 5. Commit Solution File
       PerformanceProfiler.mark('t10_solutionUploadStart');
+<<<<<<< HEAD
       const uploadLines = code ? code.split('\n').length : 0;
       const uploadHash = computeCodeHash(code);
       console.log(
         `[Leet-Vault Pipeline Diagnostics] GitHub upload content length: ${code.length}, GitHub upload line count: ${uploadLines}, source hash: ${uploadHash}`
       );
+=======
+>>>>>>> 71026eab6dc010bb78586627d22b26f34d0fd463
       const targetSha = overwriteSha || (existingFile ? existingFile.sha : undefined);
       const commitRes = await GitHubContentsService.putFile(
         token,
@@ -282,11 +288,15 @@ export class SyncManager {
             dirState,
             request,
             fileName,
+<<<<<<< HEAD
             solutionName,
             {
               includeRuntime: settings.includeRuntimeInReadme,
               includeMemory: settings.includeMemoryInReadme,
             }
+=======
+            solutionName
+>>>>>>> 71026eab6dc010bb78586627d22b26f34d0fd463
           )
             .then(() => {
               problemReadmeUpdated = true;
@@ -460,9 +470,13 @@ export class SyncManager {
 
       // Retrieve existing README content to preserve manual notes and SHA
       let currentSha = dirState.readmeSha;
+<<<<<<< HEAD
       let existingContent: string | undefined = undefined;
 
       if (dirState.readmeExists || currentSha) {
+=======
+      if (!currentSha && dirState.readmeExists) {
+>>>>>>> 71026eab6dc010bb78586627d22b26f34d0fd463
         const curFile = await GitHubContentsService.getFileContent(
           token,
           owner,
@@ -472,7 +486,13 @@ export class SyncManager {
         );
         if (curFile) {
           currentSha = curFile.sha;
+<<<<<<< HEAD
           existingContent = curFile.content;
+=======
+          if (curFile.content.trim() === readmeMd.trim()) {
+            return; // Skip write: content is identical
+          }
+>>>>>>> 71026eab6dc010bb78586627d22b26f34d0fd463
         }
       }
 
@@ -660,7 +680,11 @@ export class SyncManager {
 
       processed++;
       try {
+<<<<<<< HEAD
         const result = await this.syncSolution(item.request, { isRetry: true });
+=======
+        const result = await this.syncSolution(item.request);
+>>>>>>> 71026eab6dc010bb78586627d22b26f34d0fd463
         if (result.success) {
           succeeded++;
           // Remove from persistent queue

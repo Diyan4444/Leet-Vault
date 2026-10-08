@@ -9,7 +9,11 @@ import { SyncRequest } from '../shared/types';
 // Handle Extension Lifecycle
 if (typeof chrome !== 'undefined' && chrome.runtime?.onInstalled) {
   chrome.runtime.onInstalled.addListener(async (details) => {
+<<<<<<< HEAD
     console.log('[Leet-Vault] Extension installed/updated:', details.reason);
+=======
+    console.log('[LeetCode GitHub Sync] Extension installed/updated:', details.reason);
+>>>>>>> 71026eab6dc010bb78586627d22b26f34d0fd463
     const settings = await StorageService.getSettings();
     await StorageService.saveSettings(settings);
 
